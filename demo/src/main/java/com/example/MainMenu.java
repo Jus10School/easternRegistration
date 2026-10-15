@@ -2,24 +2,30 @@ package com.example;
 
 import java.awt.BorderLayout;
 import java.awt.CardLayout;
+import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
+import java.awt.Image;
 import java.awt.Insets;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 import javax.swing.BorderFactory;
+import javax.swing.Box;
+import javax.swing.BoxLayout;
 import javax.swing.JCheckBox;
 import javax.swing.DefaultListCellRenderer;
 import javax.swing.DefaultListModel;
 import javax.swing.JButton;
 import javax.swing.JComboBox;
 import javax.swing.JFrame;
+import javax.swing.ImageIcon;
 import javax.swing.JLabel;
 import javax.swing.JList;
 import javax.swing.JOptionPane;
@@ -40,6 +46,7 @@ public class MainMenu {
 
     private final EasternSchedule schedule;
     private final JFrame frame = new JFrame("Eastern Registration");
+    private final ImageIcon logoIcon = loadLogoIcon();
     private Student student;
     private final CardLayout cardLayout = new CardLayout();
     private final JPanel cards = new JPanel(cardLayout);
@@ -90,10 +97,21 @@ public class MainMenu {
             "Enter student information to manage course registration.",
             SwingConstants.CENTER
         );
-        JPanel headings = new JPanel(new BorderLayout(4, 4));
-        headings.add(title, BorderLayout.NORTH);
-        headings.add(subtitle, BorderLayout.SOUTH);
-        page.add(headings, BorderLayout.NORTH);
+        JPanel textHeadings = new JPanel();
+        textHeadings.setLayout(new BoxLayout(textHeadings, BoxLayout.Y_AXIS));
+        title.setAlignmentX(Component.CENTER_ALIGNMENT);
+        subtitle.setAlignmentX(Component.CENTER_ALIGNMENT);
+        textHeadings.add(title);
+        textHeadings.add(Box.createVerticalStrut(8));
+        textHeadings.add(subtitle);
+
+        JPanel headings = new JPanel();
+        headings.setLayout(new BoxLayout(headings, BoxLayout.Y_AXIS));
+        JLabel logo = createLogoLabel(190, 150);
+        logo.setAlignmentX(Component.CENTER_ALIGNMENT);
+        headings.add(logo);
+        headings.add(Box.createVerticalStrut(12));
+        headings.add(textHeadings);
 
         JPanel form = new JPanel(new GridBagLayout());
         GridBagConstraints constraints = new GridBagConstraints();
@@ -109,7 +127,18 @@ public class MainMenu {
         constraints.gridy = 3;
         constraints.anchor = GridBagConstraints.LINE_START;
         form.add(createButton, constraints);
-        page.add(form, BorderLayout.CENTER);
+
+        JPanel studentSetup = new JPanel(new GridBagLayout());
+        GridBagConstraints setupConstraints = new GridBagConstraints();
+        setupConstraints.gridx = 0;
+        setupConstraints.anchor = GridBagConstraints.CENTER;
+        setupConstraints.gridy = 0;
+        setupConstraints.insets = new Insets(0, 0, 12, 0);
+        studentSetup.add(headings, setupConstraints);
+        setupConstraints.gridy = 1;
+        setupConstraints.insets = new Insets(0, 0, 0, 0);
+        studentSetup.add(form, setupConstraints);
+        page.add(studentSetup, BorderLayout.CENTER);
         return page;
     }
 
@@ -135,9 +164,12 @@ public class MainMenu {
 
         JLabel title = new JLabel("Student Course Registration");
         title.setFont(title.getFont().deriveFont(Font.BOLD, 22f));
-        JPanel header = new JPanel(new BorderLayout(8, 8));
-        header.add(title, BorderLayout.NORTH);
-        header.add(studentLabel, BorderLayout.SOUTH);
+        JPanel headerText = new JPanel(new BorderLayout(8, 8));
+        headerText.add(title, BorderLayout.NORTH);
+        headerText.add(studentLabel, BorderLayout.SOUTH);
+        JPanel header = new JPanel(new BorderLayout(16, 4));
+        header.add(createLogoLabel(130, 100), BorderLayout.WEST);
+        header.add(headerText, BorderLayout.CENTER);
         page.add(header, BorderLayout.NORTH);
 
         JPanel courseSearchPanel = new JPanel(new BorderLayout(8, 8));
@@ -161,9 +193,14 @@ public class MainMenu {
         courseSearchPanel.add(searchHeader, BorderLayout.NORTH);
         courseSearchPanel.add(new JScrollPane(searchList), BorderLayout.CENTER);
         addButton.addActionListener(event -> addSelectedCourses());
-        JPanel addControls = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        JButton backButton = new JButton("Back");
+        backButton.addActionListener(event -> returnToLogin());
+        JPanel courseActions = new JPanel(new BorderLayout());
+        courseActions.add(backButton, BorderLayout.WEST);
+        JPanel addControls = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
         addControls.add(addButton);
-        courseSearchPanel.add(addControls, BorderLayout.SOUTH);
+        courseActions.add(addControls, BorderLayout.EAST);
+        courseSearchPanel.add(courseActions, BorderLayout.SOUTH);
 
         JPanel registeredPanel = new JPanel(new BorderLayout(8, 8));
         registeredPanel.setBorder(BorderFactory.createTitledBorder("Registered courses"));
@@ -216,6 +253,35 @@ public class MainMenu {
                 + "  |  Student ID: " + student.getId()
         );
         cardLayout.show(cards, REGISTRATION_CARD);
+    }
+
+    private void returnToLogin() {
+        if (!student.getCourses().isEmpty()) {
+            int choice = JOptionPane.showConfirmDialog(
+                frame,
+                "Returning to login will discard this student's registered "
+                    + "courses. Continue?",
+                "Discard registered courses?",
+                JOptionPane.YES_NO_OPTION,
+                JOptionPane.WARNING_MESSAGE
+            );
+            if (choice != JOptionPane.YES_OPTION) {
+                return;
+            }
+        }
+
+        student = null;
+        idField.setText("");
+        firstNameField.setText("");
+        lastNameField.setText("");
+        searchResults.clear();
+        registeredCourses.clear();
+        searchList.clearSelection();
+        registeredList.clearSelection();
+        registeredCreditsLabel.setText("0 / " + Student.MAX_CREDITS + " credits");
+        statusLabel.setText("Search by subject to find courses.");
+        cardLayout.show(cards, CREATE_STUDENT_CARD);
+        idField.requestFocusInWindow();
     }
 
     private Student currentStudent() {
@@ -405,6 +471,37 @@ public class MainMenu {
         return value.replace("&", "&amp;")
             .replace("<", "&lt;")
             .replace(">", "&gt;");
+    }
+
+    private static ImageIcon loadLogoIcon() {
+        URL logoUrl = MainMenu.class.getResource("/images/ecsu-logo.png");
+        if (logoUrl == null) {
+            throw new IllegalStateException(
+                "Missing GUI logo resource: /images/ecsu-logo.png"
+            );
+        }
+        ImageIcon icon = new ImageIcon(logoUrl);
+        if (icon.getIconWidth() <= 0 || icon.getIconHeight() <= 0) {
+            throw new IllegalStateException("Could not load GUI logo image.");
+        }
+        return icon;
+    }
+
+    private JLabel createLogoLabel(int maxWidth, int maxHeight) {
+        double scale = Math.min(
+            (double) maxWidth / logoIcon.getIconWidth(),
+            (double) maxHeight / logoIcon.getIconHeight()
+        );
+        Image scaledLogo = logoIcon.getImage().getScaledInstance(
+            (int) Math.round(logoIcon.getIconWidth() * scale),
+            (int) Math.round(logoIcon.getIconHeight() * scale),
+            Image.SCALE_SMOOTH
+        );
+        JLabel logo = new JLabel(new ImageIcon(scaledLogo));
+        logo.getAccessibleContext().setAccessibleName(
+            "Eastern Connecticut State University logo"
+        );
+        return logo;
     }
 
     static List<Course> filterCourses(

@@ -1,13 +1,26 @@
 package com.example;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
 
+import javax.swing.ImageIcon;
 import java.math.BigDecimal;
 import java.util.List;
 
 import org.junit.Test;
 
 public class MainMenuTest {
+
+    @Test
+    public void packagesLoadableLogoForGui() {
+        var logoUrl = MainMenu.class.getResource("/images/ecsu-logo.png");
+        assertNotNull(logoUrl);
+
+        ImageIcon logo = new ImageIcon(logoUrl);
+        assertTrue(logo.getIconWidth() > 0);
+        assertTrue(logo.getIconHeight() > 0);
+    }
 
     @Test
     public void filtersCoursesByNumberAvailabilityInstructorAndExcludedDay() {
