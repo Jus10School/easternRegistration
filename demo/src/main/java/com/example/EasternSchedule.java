@@ -109,7 +109,7 @@ public class EasternSchedule {
     }
 
     /**
-     * Selects the configured term in Eastern's registration service.
+     * Selects the requested term in Eastern's registration service.
      *
      * @param termCode academic term code to select
      * @throws IOException if Eastern rejects the term selection

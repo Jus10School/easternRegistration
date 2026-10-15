@@ -4,8 +4,6 @@ import java.math.BigDecimal;
 import java.time.DateTimeException;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
@@ -107,23 +105,27 @@ public record Course(
          * @return ordered meeting-day initials, or {@code Days TBD}
          */
         public String days() {
-            HashMap<String, Boolean> daysMap = new HashMap<>();
-            daysMap.put("M", monday);
-            daysMap.put("T", tuesday);
-            daysMap.put("W", wednesday);
-            daysMap.put("R", thursday);
-            daysMap.put("F", friday);
-            daysMap.put("S", saturday);
-            daysMap.put("U", sunday);
-
-            ArrayList<String> dayOrder = new ArrayList<>(
-                List.of("M", "T", "W", "R", "F", "S", "U")
-            );
             StringBuilder days = new StringBuilder();
-            for (String day : dayOrder) {
-                if (Boolean.TRUE.equals(daysMap.get(day))) {
-                    days.append(day);
-                }
+            if (monday) {
+                days.append("M");
+            }
+            if (tuesday) {
+                days.append("T");
+            }
+            if (wednesday) {
+                days.append("W");
+            }
+            if (thursday) {
+                days.append("R");
+            }
+            if (friday) {
+                days.append("F");
+            }
+            if (saturday) {
+                days.append("S");
+            }
+            if (sunday) {
+                days.append("U");
             }
             return days.isEmpty() ? "Days TBD" : days.toString();
         }

@@ -12,10 +12,10 @@
         },
         {
             "type": "java",
-            "name": "EasternSchedule",
+            "name": "Eastern Registration",
             "request": "launch",
-            "mainClass": "com.example.EasternSchedule",
+            "mainClass": "com.example.EasternRegistration",
             "projectName": "demo"
-        },        
+        }
     ]
 }

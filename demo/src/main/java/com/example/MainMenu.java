@@ -12,8 +12,10 @@ import java.awt.Image;
 import java.awt.Insets;
 import java.net.URL;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 import javax.swing.BorderFactory;
@@ -37,11 +39,13 @@ import javax.swing.SwingConstants;
 import javax.swing.SwingWorker;
 
 /**
- * Graphical entry point for student details and course registration.
+ * Main window for student accounts and course registration.
  *
  * <p>The interface loads available terms, searches and filters course
  * sections, and lets a student add or drop sections in the current in-memory
- * schedule.</p>
+ * schedule. Student accounts and their saved terms remain available until the
+ * application closes; login matches the student ID and names after trimming
+ * surrounding whitespace.</p>
  */
 public class MainMenu {
 
@@ -51,6 +55,8 @@ public class MainMenu {
     private final EasternSchedule schedule;
     private final JFrame frame = new JFrame("Eastern Registration");
     private final ImageIcon logoIcon = loadLogoIcon();
+    private final Map<String, Student> studentAccounts = new HashMap<>();
+    private final Map<String, String> studentTerms = new HashMap<>();
     private Student student;
     private final CardLayout cardLayout = new CardLayout();
     private final JPanel cards = new JPanel(cardLayout);
@@ -76,6 +82,7 @@ public class MainMenu {
     private final JLabel statusLabel = new JLabel("Search by subject to find courses.");
     private final JButton searchButton = new JButton("Search Courses");
     private final JButton addButton = new JButton("Add Selected");
+    private final JButton backButton = new JButton("Back");
     private boolean termsLoading;
     private boolean termsLoaded;
 
@@ -111,7 +118,7 @@ public class MainMenu {
     }
 
     /**
-     * Loads available terms once and enables course search after success.
+     * Loads available terms and enables course search after success.
      *
      * <p>The network or cache operation runs off the Swing event-dispatch
      * thread; any failure is reported in the window.</p>
@@ -150,8 +157,11 @@ public class MainMenu {
                             break;
                         }
                     }
+                    selectSavedTermForCurrentStudent();
                     termsLoaded = true;
-                    termCombo.setEnabled(true);
+                    termCombo.setEnabled(
+                        student == null || student.getCourses().isEmpty()
+                    );
                     searchButton.setEnabled(true);
                     statusLabel.setText("Search by subject to find courses.");
                 } catch (InterruptedException exception) {
@@ -172,10 +182,7 @@ public class MainMenu {
 
         JLabel title = new JLabel("Eastern Registration", SwingConstants.CENTER);
         title.setFont(title.getFont().deriveFont(Font.BOLD, 26f));
-        JLabel subtitle = new JLabel(
-            "Student Login",
-            SwingConstants.CENTER
-        );
+        JLabel subtitle = new JLabel("Create an account or log in", SwingConstants.CENTER);
         JPanel textHeadings = new JPanel();
         textHeadings.setLayout(new BoxLayout(textHeadings, BoxLayout.Y_AXIS));
         title.setAlignmentX(Component.CENTER_ALIGNMENT);
@@ -200,12 +207,17 @@ public class MainMenu {
         addFormRow(form, constraints, 1, "First name:", firstNameField);
         addFormRow(form, constraints, 2, "Last name:", lastNameField);
 
-        JButton createButton = new JButton("Continue");
-        createButton.addActionListener(event -> createStudent());
+        JButton createAccountButton = new JButton("Create Account");
+        createAccountButton.addActionListener(event -> createStudentAccount());
+        JButton loginButton = new JButton("Log In");
+        loginButton.addActionListener(event -> logInStudent());
+        JPanel accountActions = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        accountActions.add(createAccountButton);
+        accountActions.add(loginButton);
         constraints.gridx = 1;
         constraints.gridy = 3;
         constraints.anchor = GridBagConstraints.LINE_START;
-        form.add(createButton, constraints);
+        form.add(accountActions, constraints);
 
         JPanel studentSetup = new JPanel(new GridBagLayout());
         GridBagConstraints setupConstraints = new GridBagConstraints();
@@ -274,7 +286,6 @@ public class MainMenu {
         courseSearchPanel.add(searchHeader, BorderLayout.NORTH);
         courseSearchPanel.add(new JScrollPane(searchList), BorderLayout.CENTER);
         addButton.addActionListener(event -> addSelectedCourses());
-        JButton backButton = new JButton("Back");
         backButton.addActionListener(event -> returnToLogin());
         JPanel courseActions = new JPanel(new BorderLayout());
         courseActions.add(backButton, BorderLayout.WEST);
@@ -309,54 +320,113 @@ public class MainMenu {
         return page;
     }
 
-    /**
-     * Validates the login fields and opens registration for the new student.
-     */
-    private void createStudent() {
+    /** Creates and stores a new student account for this application session. */
+    private void createStudentAccount() {
         String id = idField.getText().trim();
         String firstName = firstNameField.getText().trim();
         String lastName = lastNameField.getText().trim();
-        if (id.isEmpty() || firstName.isEmpty() || lastName.isEmpty()) {
-            JOptionPane.showMessageDialog(
-                frame,
-                "Enter a student ID, first name, and last name.",
-                "Student information required",
-                JOptionPane.WARNING_MESSAGE
+        if (!hasValidStudentDetails(id, firstName, lastName)) {
+            return;
+        }
+        if (studentAccounts.containsKey(id)) {
+            showStudentDetailsError(
+                "An account already exists for this student ID. Log in using "
+                    + "the exact first and last name."
             );
             return;
         }
 
         try {
-            student = new Student(id, firstName, lastName);
+            Student newStudent = new Student(id, firstName, lastName);
+            studentAccounts.put(id, newStudent);
+            openStudentSession(newStudent);
         } catch (IllegalArgumentException exception) {
             showError("Could not create student", exception);
+        }
+    }
+
+    /** Opens an existing account when the ID and both names match exactly. */
+    private void logInStudent() {
+        String id = idField.getText().trim();
+        String firstName = firstNameField.getText().trim();
+        String lastName = lastNameField.getText().trim();
+        if (!hasValidStudentDetails(id, firstName, lastName)) {
             return;
         }
+
+        Student existingStudent = studentAccounts.get(id);
+        if (existingStudent == null) {
+            showStudentDetailsError(
+                "No account exists for this student ID. Create an account first."
+            );
+            return;
+        }
+        if (!existingStudent.getFirstName().equals(firstName)
+            || !existingStudent.getLastName().equals(lastName)) {
+            showStudentDetailsError(
+                "The student ID and name do not match the account."
+            );
+            return;
+        }
+        openStudentSession(existingStudent);
+    }
+
+    private boolean hasValidStudentDetails(
+        String id,
+        String firstName,
+        String lastName
+    ) {
+        if (!id.isEmpty() && !firstName.isEmpty() && !lastName.isEmpty()) {
+            return true;
+        }
+        showStudentDetailsError("Enter a student ID, first name, and last name.");
+        return false;
+    }
+
+    private void showStudentDetailsError(String message) {
+        JOptionPane.showMessageDialog(
+            frame,
+            message,
+            "Student account",
+            JOptionPane.WARNING_MESSAGE
+        );
+    }
+
+    private void openStudentSession(Student selectedStudent) {
+        student = selectedStudent;
         studentLabel.setText(
             student.getFirstName() + " " + student.getLastName()
                 + "  |  Student ID: " + student.getId()
         );
+        selectSavedTermForCurrentStudent();
+        searchResults.clear();
+        searchList.clearSelection();
+        registeredList.clearSelection();
+        refreshRegisteredCourses();
+        statusLabel.setText("Search by subject to find courses.");
         cardLayout.show(cards, REGISTRATION_CARD);
     }
 
-    /**
-     * Returns to student setup, asking before discarding registered courses.
-     */
-    private void returnToLogin() {
-        if (!student.getCourses().isEmpty()) {
-            int choice = JOptionPane.showConfirmDialog(
-                frame,
-                "Returning to login will discard this student's registered "
-                    + "courses. Continue?",
-                "Discard registered courses?",
-                JOptionPane.YES_NO_OPTION,
-                JOptionPane.WARNING_MESSAGE
-            );
-            if (choice != JOptionPane.YES_OPTION) {
+    private void selectSavedTermForCurrentStudent() {
+        if (student == null) {
+            return;
+        }
+        String savedTermCode = studentTerms.get(student.getId());
+        if (savedTermCode == null) {
+            return;
+        }
+        for (int index = 0; index < termCombo.getItemCount(); index++) {
+            if (savedTermCode.equals(termCombo.getItemAt(index).code())) {
+                termCombo.setSelectedIndex(index);
                 return;
             }
         }
+    }
 
+    /**
+     * Returns to student setup while retaining registered courses in memory.
+     */
+    private void returnToLogin() {
         student = null;
         idField.setText("");
         firstNameField.setText("");
@@ -366,15 +436,9 @@ public class MainMenu {
         searchList.clearSelection();
         registeredList.clearSelection();
         registeredCreditsLabel.setText("0 / " + Student.MAX_CREDITS + " credits");
-        termCombo.setEnabled(termsLoaded);
         statusLabel.setText("Search by subject to find courses.");
         cardLayout.show(cards, CREATE_STUDENT_CARD);
         idField.requestFocusInWindow();
-    }
-
-    /** @return the current student, or {@code null} before one is created */
-    private Student currentStudent() {
-        return student;
     }
 
     /**
@@ -396,7 +460,7 @@ public class MainMenu {
             statusLabel.setText("Select an academic term before searching.");
             return;
         }
-        String normalizedSubject = subject.toUpperCase(java.util.Locale.ROOT);
+        String normalizedSubject = subject.toUpperCase(Locale.ROOT);
         String selectedTermCode = selectedTerm.code();
         new SwingWorker<List<Course>, Void>() {
             @Override
@@ -445,11 +509,15 @@ public class MainMenu {
             return;
         }
 
-        Student.AddCoursesResult result = currentStudent().addCoursesWithResult(
+        Student.AddCoursesResult result = student.addCoursesWithResult(
             selected.toArray(Course[]::new)
         );
         statusLabel.setText(messageFor(result));
         if (result == Student.AddCoursesResult.ADDED) {
+            Term selectedTerm = (Term) termCombo.getSelectedItem();
+            if (selectedTerm != null) {
+                studentTerms.put(student.getId(), selectedTerm.code());
+            }
             refreshRegisteredCourses();
         }
     }
@@ -462,7 +530,7 @@ public class MainMenu {
             return;
         }
 
-        currentStudent().dropCourses(selected.toArray(Course[]::new));
+        student.dropCourses(selected.toArray(Course[]::new));
         refreshRegisteredCourses();
         statusLabel.setText("Selected course(s) dropped.");
     }
@@ -473,7 +541,7 @@ public class MainMenu {
             statusLabel.setText("There are no registered courses to drop.");
             return;
         }
-        currentStudent().dropAllCourses();
+        student.dropAllCourses();
         refreshRegisteredCourses();
         statusLabel.setText("All courses dropped.");
     }
@@ -481,14 +549,14 @@ public class MainMenu {
     /** Refreshes the registered-section list, credit total, and term control. */
     private void refreshRegisteredCourses() {
         registeredCourses.clear();
-        for (Course course : currentStudent().getCourses()) {
+        for (Course course : student.getCourses()) {
             registeredCourses.addElement(course);
         }
         registeredCreditsLabel.setText(
-            currentStudent().getRegisteredCredits().stripTrailingZeros().toPlainString()
+            student.getRegisteredCredits().stripTrailingZeros().toPlainString()
                 + " / " + Student.MAX_CREDITS + " credits"
         );
-        termCombo.setEnabled(currentStudent().getCourses().isEmpty() && termsLoaded);
+        termCombo.setEnabled(student.getCourses().isEmpty() && termsLoaded);
     }
 
     /**
@@ -500,8 +568,10 @@ public class MainMenu {
         searchButton.setEnabled(!busy);
         subjectField.setEnabled(!busy);
         addButton.setEnabled(!busy);
+        backButton.setEnabled(!busy);
         termCombo.setEnabled(
-            !busy && termsLoaded && currentStudent().getCourses().isEmpty()
+            !busy && termsLoaded && student != null
+                && student.getCourses().isEmpty()
         );
     }
 
@@ -710,7 +780,8 @@ public class MainMenu {
      * @param courseNumber course number to match, or blank for any number
      * @param openOnly whether to exclude closed sections
      * @param instructor instructor-name substring to match, or blank for any
-     * @param excludedDay weekday to exclude, or blank for no day restriction
+     * @param excludedDay weekday to exclude, or blank or unrecognized for no
+     *        day restriction
      * @return the matching course sections in their original order
      */
     private static List<Course> filterCourses(
