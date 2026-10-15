@@ -1,8 +1,11 @@
 package com.example;
 
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Scanner;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -12,6 +15,7 @@ public class MainMenu {
 
     private final EasternSchedule schedule;
     private final Scanner input;
+    private Student student;
 
     public MainMenu() {
         this(new EasternSchedule(), new Scanner(System.in));
@@ -30,8 +34,9 @@ public class MainMenu {
         System.out.println("Eastern Registration Course Search");
 
         while (true) {
-            System.out.println("\n1. Display all courses for a subject");
+            System.out.println("1. Display all courses for a subject");
             System.out.println("2. Search a subject with additional criteria");
+            System.out.println("3. Manage student registration");
             System.out.print("Select an option (or Q to quit): ");
             if (!input.hasNextLine()) {
                 return;
@@ -42,12 +47,199 @@ public class MainMenu {
                 System.out.println("Goodbye.");
                 return;
             }
-            if (!choice.equals("1") && !choice.equals("2")) {
-                System.out.println("Please select 1, 2, or Q.");
+            if (!choice.equals("1") && !choice.equals("2") && !choice.equals("3")) {
+                System.out.println("Please select 1, 2, 3, or Q.");
+            } else if (choice.equals("3")) {
+                manageStudent();
             } else {
                 search(choice.equals("2"));
             }
         }
+    }
+
+    private void manageStudent() throws Exception {
+        if (student == null) {
+            String id = promptNonBlank("Student ID: ");
+            if (id == null) {
+                return;
+            }
+            String firstName = promptNonBlank("First name: ");
+            if (firstName == null) {
+                return;
+            }
+            String lastName = promptNonBlank("Last name: ");
+            if (lastName == null) {
+                return;
+            }
+            student = new Student(id, firstName, lastName);
+            System.out.println(
+                "Created student " + student.getFirstName() + " "
+                    + student.getLastName() + " (ID: " + student.getId() + ")."
+            );
+        }
+
+        while (true) {
+            System.out.println("\nStudent: " + student.getFirstName() + " "
+                + student.getLastName() + " (ID: " + student.getId() + ")");
+            System.out.println("1. Add courses");
+            System.out.println("2. Drop specific courses");
+            System.out.println("3. Drop all courses");
+            System.out.println("4. View registered courses");
+            String choice = prompt("Select an option (or B to return): ");
+            if (choice.isEmpty()) {
+                return;
+            }
+            choice = choice.trim();
+            if (choice.equalsIgnoreCase("b")) {
+                return;
+            }
+
+            switch (choice) {
+                case "1" -> addCourses();
+                case "2" -> dropCourses();
+                case "3" -> {
+                    student.dropAllCourses();
+                    System.out.println("All courses dropped.");
+                }
+                case "4" -> displayRegisteredCourses();
+                default -> System.out.println("Please select 1, 2, 3, 4, or B.");
+            }
+        }
+    }
+
+    private String promptNonBlank(String message) {
+        while (true) {
+            System.out.print(message);
+            System.out.flush();
+            if (!input.hasNextLine()) {
+                return null;
+            }
+            String value = input.nextLine().trim();
+            if (!value.isEmpty()) {
+                return value;
+            }
+            System.out.println("This field cannot be blank.");
+        }
+    }
+
+    private void addCourses() throws Exception {
+        String subject = prompt("Enter the subject code (or B to return): ");
+        if (subject.isEmpty() || subject.trim().equalsIgnoreCase("b")) {
+            return;
+        }
+        List<Course> courses = schedule.queryCourseBySubject(
+            subject.trim().toUpperCase(Locale.ROOT)
+        );
+        if (courses.isEmpty()) {
+            System.out.println("No courses found for " + subject.trim() + ".");
+            return;
+        }
+
+        displaySelectableCourses(courses);
+        String selection = prompt(
+            "Enter course number(s) to add, separated by commas (or B to cancel): "
+        ).trim();
+        if (selection.equalsIgnoreCase("b") || selection.isEmpty()) {
+            return;
+        }
+        List<Integer> indexes = parseCourseSelections(selection, courses.size());
+        if (indexes == null) {
+            System.out.println("Invalid course selection.");
+            return;
+        }
+
+        List<Course> selectedCourses = indexes.stream()
+            .map(courses::get)
+            .toList();
+        Student.AddCoursesResult result = student.addCoursesWithResult(
+            selectedCourses.toArray(Course[]::new)
+        );
+        switch (result) {
+            case ADDED -> System.out.println("Course(s) added.");
+            case COURSE_LIMIT_EXCEEDED -> System.out.println(
+                "Could not add course(s): registration is limited to "
+                    + Student.MAX_CREDITS + " course sections."
+            );
+            case COURSE_NOT_OPEN -> System.out.println(
+                "Could not add course(s): at least one selected section is not "
+                    + "open; it may be full."
+            );
+            case ALREADY_REGISTERED -> System.out.println(
+                "Could not add course(s): at least one selected section is "
+                    + "already on your schedule."
+            );
+            case TIME_CONFLICT -> System.out.println(
+                "Could not add course(s): at least one selected section has a "
+                    + "meeting-time conflict with your schedule or another "
+                    + "selected section."
+            );
+            case NO_COURSES -> System.out.println("No courses were selected.");
+        }
+    }
+
+    private void dropCourses() {
+        List<Course> registeredCourses = student.getCourses();
+        if (registeredCourses.isEmpty()) {
+            System.out.println("No courses are currently registered.");
+            return;
+        }
+        displaySelectableCourses(registeredCourses);
+        String selection = prompt(
+            "Enter course number(s) to drop, separated by commas (or B to cancel): "
+        ).trim();
+        if (selection.equalsIgnoreCase("b") || selection.isEmpty()) {
+            return;
+        }
+        List<Integer> indexes = parseCourseSelections(
+            selection,
+            registeredCourses.size()
+        );
+        if (indexes == null) {
+            System.out.println("Invalid course selection.");
+            return;
+        }
+
+        List<Course> selectedCourses = indexes.stream()
+            .map(registeredCourses::get)
+            .toList();
+        student.dropCourses(selectedCourses.toArray(Course[]::new));
+        System.out.println("Selected course(s) dropped.");
+    }
+
+    private void displayRegisteredCourses() {
+        List<Course> registeredCourses = student.getCourses();
+        if (registeredCourses.isEmpty()) {
+            System.out.println("No courses are currently registered.");
+            return;
+        }
+        displaySelectableCourses(registeredCourses);
+    }
+
+    private static void displaySelectableCourses(List<Course> courses) {
+        for (int index = 0; index < courses.size(); index++) {
+            System.out.print((index + 1) + ". ");
+            displayCourse(courses.get(index));
+        }
+    }
+
+    private static List<Integer> parseCourseSelections(
+        String selection,
+        int courseCount
+    ) {
+        List<Integer> indexes = new ArrayList<>();
+        Set<Integer> uniqueIndexes = new HashSet<>();
+        for (String value : selection.split(",")) {
+            try {
+                int index = Integer.parseInt(value.trim()) - 1;
+                if (index < 0 || index >= courseCount || !uniqueIndexes.add(index)) {
+                    return null;
+                }
+                indexes.add(index);
+            } catch (NumberFormatException exception) {
+                return null;
+            }
+        }
+        return indexes;
     }
 
     private void search(boolean applyFilters) throws Exception {
@@ -141,6 +333,7 @@ public class MainMenu {
 
     private String prompt(String message) {
         System.out.print(message);
+        System.out.flush();
         return input.hasNextLine() ? input.nextLine() : "";
     }
 
