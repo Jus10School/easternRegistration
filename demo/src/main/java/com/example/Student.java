@@ -3,6 +3,7 @@ package com.example;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -19,6 +20,7 @@ public class Student {
         ADDED,
         NO_COURSES,
         COURSE_LIMIT_EXCEEDED,
+        COURSE_CREDITS_UNKNOWN,
         COURSE_NOT_OPEN,
         ALREADY_REGISTERED,
         TIME_CONFLICT
@@ -54,6 +56,10 @@ public class Student {
         return List.copyOf(courses);
     }
 
+    public BigDecimal getRegisteredCredits() {
+        return totalCredits(courses);
+    }
+
     /**
      * Adds one course if it is available, fits the registration limit, and
      * does not conflict with an existing course.
@@ -78,10 +84,6 @@ public class Student {
         if (coursesToAdd.length == 0) {
             return AddCoursesResult.NO_COURSES;
         }
-        if (courses.size() + coursesToAdd.length > MAX_CREDITS) {
-            return AddCoursesResult.COURSE_LIMIT_EXCEEDED;
-        }
-
         List<Course> candidates = new ArrayList<>(courses);
         for (Course course : coursesToAdd) {
             if (course == null || !Boolean.TRUE.equals(course.openSection())) {
@@ -94,6 +96,13 @@ public class Student {
                 return AddCoursesResult.TIME_CONFLICT;
             }
             candidates.add(course);
+            BigDecimal candidateCredits = totalCredits(candidates);
+            if (candidateCredits == null) {
+                return AddCoursesResult.COURSE_CREDITS_UNKNOWN;
+            }
+            if (candidateCredits.compareTo(BigDecimal.valueOf(MAX_CREDITS)) > 0) {
+                return AddCoursesResult.COURSE_LIMIT_EXCEEDED;
+            }
         }
 
         courses.addAll(Arrays.asList(coursesToAdd));
@@ -199,6 +208,23 @@ public class Student {
 
     private static boolean containsCourse(List<Course> list, Course target) {
         return findCourseIndex(list, target) >= 0;
+    }
+
+    private static BigDecimal totalCredits(List<Course> registeredCourses) {
+        BigDecimal total = BigDecimal.ZERO;
+        for (Course course : registeredCourses) {
+            BigDecimal credits = course.creditHours();
+            if (credits == null) {
+                credits = course.creditHourHigh() != null
+                    ? course.creditHourHigh()
+                    : course.creditHourLow();
+            }
+            if (credits == null || credits.signum() < 0) {
+                return null;
+            }
+            total = total.add(credits);
+        }
+        return total;
     }
 
     private static int findCourseIndex(List<Course> list, Course target) {

@@ -1,340 +1,410 @@
 package com.example;
 
+import java.awt.BorderLayout;
+import java.awt.CardLayout;
+import java.awt.Dimension;
+import java.awt.FlowLayout;
+import java.awt.Font;
+import java.awt.GridBagConstraints;
+import java.awt.GridBagLayout;
+import java.awt.Insets;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.Scanner;
-import java.util.Set;
+import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
+import javax.swing.BorderFactory;
+import javax.swing.JCheckBox;
+import javax.swing.DefaultListCellRenderer;
+import javax.swing.DefaultListModel;
+import javax.swing.JButton;
+import javax.swing.JComboBox;
+import javax.swing.JFrame;
+import javax.swing.JLabel;
+import javax.swing.JList;
+import javax.swing.JOptionPane;
+import javax.swing.JPanel;
+import javax.swing.JScrollPane;
+import javax.swing.JTextField;
+import javax.swing.ListSelectionModel;
+import javax.swing.SwingConstants;
+import javax.swing.SwingWorker;
 
 /**
- * Interactive menu for looking up courses by subject and search criteria.
+ * Graphical main menu for student creation and course registration.
  */
 public class MainMenu {
 
+    private static final String CREATE_STUDENT_CARD = "create-student";
+    private static final String REGISTRATION_CARD = "registration";
+
     private final EasternSchedule schedule;
-    private final Scanner input;
+    private final JFrame frame = new JFrame("Eastern Registration");
     private Student student;
+    private final CardLayout cardLayout = new CardLayout();
+    private final JPanel cards = new JPanel(cardLayout);
+    private final JTextField idField = new JTextField(20);
+    private final JTextField firstNameField = new JTextField(20);
+    private final JTextField lastNameField = new JTextField(20);
+    private final JTextField subjectField = new JTextField(12);
+    private final JTextField courseNumberField = new JTextField(7);
+    private final JTextField instructorField = new JTextField(12);
+    private final JComboBox<String> excludedDayCombo = new JComboBox<>(
+        new String[] {"None", "Monday", "Tuesday", "Wednesday", "Thursday",
+            "Friday"}
+    );
+    private final JCheckBox openOnlyCheckBox = new JCheckBox("Open only");
+    private final DefaultListModel<Course> searchResults = new DefaultListModel<>();
+    private final DefaultListModel<Course> registeredCourses = new DefaultListModel<>();
+    private final JList<Course> searchList = createCourseList(searchResults);
+    private final JList<Course> registeredList = createCourseList(registeredCourses);
+    private final JLabel studentLabel = new JLabel(" ");
+    private final JLabel registeredCreditsLabel = new JLabel("0 / "
+        + Student.MAX_CREDITS + " credits");
+    private final JLabel statusLabel = new JLabel("Search by subject to find courses.");
+    private final JButton searchButton = new JButton("Search Courses");
+    private final JButton addButton = new JButton("Add Selected");
 
-    public MainMenu() {
-        this(new EasternSchedule(), new Scanner(System.in));
-    }
-
-    MainMenu(EasternSchedule schedule, Scanner input) {
+    public MainMenu(EasternSchedule schedule) {
         this.schedule = schedule;
-        this.input = input;
+        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        frame.setMinimumSize(new Dimension(900, 620));
+        frame.setContentPane(cards);
+        cards.add(createStudentPanel(), CREATE_STUDENT_CARD);
+        cards.add(createRegistrationPanel(), REGISTRATION_CARD);
+        frame.pack();
+        frame.setLocationRelativeTo(null);
     }
 
-    public static void main(String[] args) throws Exception {
-        new MainMenu().run();
+    public void show() {
+        frame.setVisible(true);
     }
 
-    public void run() throws Exception {
-        System.out.println("Eastern Registration Course Search");
+    private JPanel createStudentPanel() {
+        JPanel page = new JPanel(new BorderLayout(12, 12));
+        page.setBorder(BorderFactory.createEmptyBorder(32, 48, 32, 48));
 
-        while (true) {
-            System.out.println("1. Display all courses for a subject");
-            System.out.println("2. Search a subject with additional criteria");
-            System.out.println("3. Manage student registration");
-            System.out.print("Select an option (or Q to quit): ");
-            if (!input.hasNextLine()) {
-                return;
-            }
-
-            String choice = input.nextLine().trim();
-            if (choice.equalsIgnoreCase("q")) {
-                System.out.println("Goodbye.");
-                return;
-            }
-            if (!choice.equals("1") && !choice.equals("2") && !choice.equals("3")) {
-                System.out.println("Please select 1, 2, 3, or Q.");
-            } else if (choice.equals("3")) {
-                manageStudent();
-            } else {
-                search(choice.equals("2"));
-            }
-        }
-    }
-
-    private void manageStudent() throws Exception {
-        if (student == null) {
-            String id = promptNonBlank("Student ID: ");
-            if (id == null) {
-                return;
-            }
-            String firstName = promptNonBlank("First name: ");
-            if (firstName == null) {
-                return;
-            }
-            String lastName = promptNonBlank("Last name: ");
-            if (lastName == null) {
-                return;
-            }
-            student = new Student(id, firstName, lastName);
-            System.out.println(
-                "Created student " + student.getFirstName() + " "
-                    + student.getLastName() + " (ID: " + student.getId() + ")."
-            );
-        }
-
-        while (true) {
-            System.out.println("\nStudent: " + student.getFirstName() + " "
-                + student.getLastName() + " (ID: " + student.getId() + ")");
-            System.out.println("1. Add courses");
-            System.out.println("2. Drop specific courses");
-            System.out.println("3. Drop all courses");
-            System.out.println("4. View registered courses");
-            String choice = prompt("Select an option (or B to return): ");
-            if (choice.isEmpty()) {
-                return;
-            }
-            choice = choice.trim();
-            if (choice.equalsIgnoreCase("b")) {
-                return;
-            }
-
-            switch (choice) {
-                case "1" -> addCourses();
-                case "2" -> dropCourses();
-                case "3" -> {
-                    student.dropAllCourses();
-                    System.out.println("All courses dropped.");
-                }
-                case "4" -> displayRegisteredCourses();
-                default -> System.out.println("Please select 1, 2, 3, 4, or B.");
-            }
-        }
-    }
-
-    private String promptNonBlank(String message) {
-        while (true) {
-            System.out.print(message);
-            System.out.flush();
-            if (!input.hasNextLine()) {
-                return null;
-            }
-            String value = input.nextLine().trim();
-            if (!value.isEmpty()) {
-                return value;
-            }
-            System.out.println("This field cannot be blank.");
-        }
-    }
-
-    private void addCourses() throws Exception {
-        String subject = prompt("Enter the subject code (or B to return): ");
-        if (subject.isEmpty() || subject.trim().equalsIgnoreCase("b")) {
-            return;
-        }
-        List<Course> courses = schedule.queryCourseBySubject(
-            subject.trim().toUpperCase(Locale.ROOT)
+        JLabel title = new JLabel("Eastern Registration", SwingConstants.CENTER);
+        title.setFont(title.getFont().deriveFont(Font.BOLD, 26f));
+        JLabel subtitle = new JLabel(
+            "Enter student information to manage course registration.",
+            SwingConstants.CENTER
         );
-        if (courses.isEmpty()) {
-            System.out.println("No courses found for " + subject.trim() + ".");
-            return;
-        }
+        JPanel headings = new JPanel(new BorderLayout(4, 4));
+        headings.add(title, BorderLayout.NORTH);
+        headings.add(subtitle, BorderLayout.SOUTH);
+        page.add(headings, BorderLayout.NORTH);
 
-        displaySelectableCourses(courses);
-        String selection = prompt(
-            "Enter course number(s) to add, separated by commas (or B to cancel): "
-        ).trim();
-        if (selection.equalsIgnoreCase("b") || selection.isEmpty()) {
-            return;
-        }
-        List<Integer> indexes = parseCourseSelections(selection, courses.size());
-        if (indexes == null) {
-            System.out.println("Invalid course selection.");
-            return;
-        }
+        JPanel form = new JPanel(new GridBagLayout());
+        GridBagConstraints constraints = new GridBagConstraints();
+        constraints.insets = new Insets(8, 8, 8, 8);
+        constraints.anchor = GridBagConstraints.LINE_END;
+        addFormRow(form, constraints, 0, "Student ID:", idField);
+        addFormRow(form, constraints, 1, "First name:", firstNameField);
+        addFormRow(form, constraints, 2, "Last name:", lastNameField);
 
-        List<Course> selectedCourses = indexes.stream()
-            .map(courses::get)
-            .toList();
-        Student.AddCoursesResult result = student.addCoursesWithResult(
-            selectedCourses.toArray(Course[]::new)
-        );
-        switch (result) {
-            case ADDED -> System.out.println("Course(s) added.");
-            case COURSE_LIMIT_EXCEEDED -> System.out.println(
-                "Could not add course(s): registration is limited to "
-                    + Student.MAX_CREDITS + " course sections."
-            );
-            case COURSE_NOT_OPEN -> System.out.println(
-                "Could not add course(s): at least one selected section is not "
-                    + "open; it may be full."
-            );
-            case ALREADY_REGISTERED -> System.out.println(
-                "Could not add course(s): at least one selected section is "
-                    + "already on your schedule."
-            );
-            case TIME_CONFLICT -> System.out.println(
-                "Could not add course(s): at least one selected section has a "
-                    + "meeting-time conflict with your schedule or another "
-                    + "selected section."
-            );
-            case NO_COURSES -> System.out.println("No courses were selected.");
-        }
+        JButton createButton = new JButton("Continue");
+        createButton.addActionListener(event -> createStudent());
+        constraints.gridx = 1;
+        constraints.gridy = 3;
+        constraints.anchor = GridBagConstraints.LINE_START;
+        form.add(createButton, constraints);
+        page.add(form, BorderLayout.CENTER);
+        return page;
     }
 
-    private void dropCourses() {
-        List<Course> registeredCourses = student.getCourses();
-        if (registeredCourses.isEmpty()) {
-            System.out.println("No courses are currently registered.");
-            return;
-        }
-        displaySelectableCourses(registeredCourses);
-        String selection = prompt(
-            "Enter course number(s) to drop, separated by commas (or B to cancel): "
-        ).trim();
-        if (selection.equalsIgnoreCase("b") || selection.isEmpty()) {
-            return;
-        }
-        List<Integer> indexes = parseCourseSelections(
-            selection,
-            registeredCourses.size()
-        );
-        if (indexes == null) {
-            System.out.println("Invalid course selection.");
-            return;
-        }
-
-        List<Course> selectedCourses = indexes.stream()
-            .map(registeredCourses::get)
-            .toList();
-        student.dropCourses(selectedCourses.toArray(Course[]::new));
-        System.out.println("Selected course(s) dropped.");
-    }
-
-    private void displayRegisteredCourses() {
-        List<Course> registeredCourses = student.getCourses();
-        if (registeredCourses.isEmpty()) {
-            System.out.println("No courses are currently registered.");
-            return;
-        }
-        displaySelectableCourses(registeredCourses);
-    }
-
-    private static void displaySelectableCourses(List<Course> courses) {
-        for (int index = 0; index < courses.size(); index++) {
-            System.out.print((index + 1) + ". ");
-            displayCourse(courses.get(index));
-        }
-    }
-
-    private static List<Integer> parseCourseSelections(
-        String selection,
-        int courseCount
+    private static void addFormRow(
+        JPanel form,
+        GridBagConstraints constraints,
+        int row,
+        String label,
+        JTextField field
     ) {
-        List<Integer> indexes = new ArrayList<>();
-        Set<Integer> uniqueIndexes = new HashSet<>();
-        for (String value : selection.split(",")) {
-            try {
-                int index = Integer.parseInt(value.trim()) - 1;
-                if (index < 0 || index >= courseCount || !uniqueIndexes.add(index)) {
-                    return null;
-                }
-                indexes.add(index);
-            } catch (NumberFormatException exception) {
-                return null;
-            }
-        }
-        return indexes;
+        constraints.gridx = 0;
+        constraints.gridy = row;
+        constraints.anchor = GridBagConstraints.LINE_END;
+        form.add(new JLabel(label), constraints);
+        constraints.gridx = 1;
+        constraints.anchor = GridBagConstraints.LINE_START;
+        form.add(field, constraints);
     }
 
-    private void search(boolean applyFilters) throws Exception {
-        String subject;
-        List<Course> courses;
-        while (true) {
-            System.out.print("Enter a subject code (or B to return to the menu): ");
-            if (!input.hasNextLine()) {
-                return;
-            }
-            subject = input.nextLine().trim().toUpperCase(Locale.ROOT);
-            if (subject.equals("B")) {
-                return;
-            }
-            if (subject.isEmpty()) {
-                System.out.println("Please enter a subject code.");
-                continue;
-            }
+    private JPanel createRegistrationPanel() {
+        JPanel page = new JPanel(new BorderLayout(12, 12));
+        page.setBorder(BorderFactory.createEmptyBorder(18, 22, 14, 22));
 
-            courses = schedule.queryCourseBySubject(subject);
-            if (courses.isEmpty()) {
-                System.out.println("No courses found for " + subject + ". Try again.");
-                continue;
-            }
-            break;
-        }
+        JLabel title = new JLabel("Student Course Registration");
+        title.setFont(title.getFont().deriveFont(Font.BOLD, 22f));
+        JPanel header = new JPanel(new BorderLayout(8, 8));
+        header.add(title, BorderLayout.NORTH);
+        header.add(studentLabel, BorderLayout.SOUTH);
+        page.add(header, BorderLayout.NORTH);
 
-        if (applyFilters) {
-            String courseNumber;
-            while (true) {
-                String enteredNumber = prompt(
-                    "Course number (blank for all, e.g. 360): "
-                ).trim();
-                if (enteredNumber.isEmpty() || courses.stream()
-                    .anyMatch(course ->
-                        course.courseNumber().equalsIgnoreCase(enteredNumber))) {
-                    courseNumber = enteredNumber;
-                    break;
-                }
-                System.out.println(
-                    "No courses found for " + subject + " " + enteredNumber
-                    + ". Please enter another course number."
-                );
-            }
+        JPanel courseSearchPanel = new JPanel(new BorderLayout(8, 8));
+        courseSearchPanel.setBorder(BorderFactory.createTitledBorder("Find courses"));
+        JPanel searchControls = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
+        searchControls.add(new JLabel("Subject:"));
+        searchControls.add(subjectField);
+        searchButton.addActionListener(event -> searchCourses());
+        searchControls.add(searchButton);
+        JPanel filters = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 2));
+        filters.add(new JLabel("Course number:"));
+        filters.add(courseNumberField);
+        filters.add(openOnlyCheckBox);
+        filters.add(new JLabel("Instructor contains:"));
+        filters.add(instructorField);
+        filters.add(new JLabel("Exclude day:"));
+        filters.add(excludedDayCombo);
+        JPanel searchHeader = new JPanel(new BorderLayout());
+        searchHeader.add(searchControls, BorderLayout.NORTH);
+        searchHeader.add(filters, BorderLayout.SOUTH);
+        courseSearchPanel.add(searchHeader, BorderLayout.NORTH);
+        courseSearchPanel.add(new JScrollPane(searchList), BorderLayout.CENTER);
+        addButton.addActionListener(event -> addSelectedCourses());
+        JPanel addControls = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        addControls.add(addButton);
+        courseSearchPanel.add(addControls, BorderLayout.SOUTH);
 
-            courses = filterCourses(
-                courses,
-                courseNumber,
-                promptForOpenOnly(),
-                prompt("Instructor name contains (blank for any): ").trim(),
-                promptForExcludedDay()
+        JPanel registeredPanel = new JPanel(new BorderLayout(8, 8));
+        registeredPanel.setBorder(BorderFactory.createTitledBorder("Registered courses"));
+        registeredPanel.add(new JScrollPane(registeredList), BorderLayout.CENTER);
+        JButton dropButton = new JButton("Drop Selected");
+        dropButton.addActionListener(event -> dropSelectedCourses());
+        JButton dropAllButton = new JButton("Drop All");
+        dropAllButton.addActionListener(event -> dropAllCourses());
+        JPanel dropControls = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        dropControls.add(dropButton);
+        dropControls.add(dropAllButton);
+        JPanel registeredFooter = new JPanel(new BorderLayout());
+        registeredFooter.add(registeredCreditsLabel, BorderLayout.WEST);
+        registeredFooter.add(dropControls, BorderLayout.EAST);
+        registeredPanel.add(registeredFooter, BorderLayout.SOUTH);
+
+        JPanel content = new JPanel(new BorderLayout(12, 0));
+        content.add(courseSearchPanel, BorderLayout.CENTER);
+        content.add(registeredPanel, BorderLayout.EAST);
+        registeredPanel.setPreferredSize(new Dimension(390, 400));
+        page.add(content, BorderLayout.CENTER);
+
+        statusLabel.setBorder(BorderFactory.createEmptyBorder(2, 4, 2, 4));
+        page.add(statusLabel, BorderLayout.SOUTH);
+        return page;
+    }
+
+    private void createStudent() {
+        String id = idField.getText().trim();
+        String firstName = firstNameField.getText().trim();
+        String lastName = lastNameField.getText().trim();
+        if (id.isEmpty() || firstName.isEmpty() || lastName.isEmpty()) {
+            JOptionPane.showMessageDialog(
+                frame,
+                "Enter a student ID, first name, and last name.",
+                "Student information required",
+                JOptionPane.WARNING_MESSAGE
             );
-        }
-
-        if (courses.isEmpty()) {
-            System.out.println("No courses found for " + subject + ".");
             return;
         }
 
-        for (Course course : courses) {
-            displayCourse(course);
+        try {
+            student = new Student(id, firstName, lastName);
+        } catch (IllegalArgumentException exception) {
+            showError("Could not create student", exception);
+            return;
         }
-    }
-    
-
-    private boolean promptForOpenOnly() {
-        while (true) {
-            String answer = prompt("Only open courses? (y/n): ").trim();
-            if (answer.equalsIgnoreCase("y") || answer.equalsIgnoreCase("yes")) {
-                return true;
-            }
-            if (answer.equalsIgnoreCase("n") || answer.equalsIgnoreCase("no")
-                || answer.isEmpty()) {
-                return false;
-            }
-            System.out.println("Please enter y or n.");
-        }
+        studentLabel.setText(
+            student.getFirstName() + " " + student.getLastName()
+                + "  |  Student ID: " + student.getId()
+        );
+        cardLayout.show(cards, REGISTRATION_CARD);
     }
 
-    private String promptForExcludedDay() {
-        while (true) {
-            String day = prompt(
-                "Exclude a day (Monday-Sunday, or blank for any): "
-            ).trim();
-            if (day.isEmpty() || dayCode(day) != null) {
-                return day;
+    private Student currentStudent() {
+        return student;
+    }
+
+    private void searchCourses() {
+        String subject = subjectField.getText().trim();
+        if (subject.isEmpty()) {
+            statusLabel.setText("Enter a subject code to search.");
+            subjectField.requestFocusInWindow();
+            return;
+        }
+
+        setSearchBusy(true);
+        statusLabel.setText("Searching courses...");
+        String normalizedSubject = subject.toUpperCase(java.util.Locale.ROOT);
+        new SwingWorker<List<Course>, Void>() {
+            @Override
+            protected List<Course> doInBackground() throws Exception {
+                return schedule.queryCourseBySubject(normalizedSubject);
             }
-            System.out.println("Please enter a valid day of the week.");
+
+            @Override
+            protected void done() {
+                setSearchBusy(false);
+                try {
+                    List<Course> courses = filterCourses(
+                        get(),
+                        courseNumberField.getText(),
+                        openOnlyCheckBox.isSelected(),
+                        instructorField.getText(),
+                        "None".equals(excludedDayCombo.getSelectedItem())
+                            ? ""
+                            : (String) excludedDayCombo.getSelectedItem()
+                    );
+                    searchResults.clear();
+                    for (Course course : courses) {
+                        searchResults.addElement(course);
+                    }
+                    statusLabel.setText(courses.isEmpty()
+                        ? "No courses found for " + normalizedSubject + "."
+                        : courses.size() + " course section(s) found.");
+                } catch (InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                    showError("Course search was interrupted", exception);
+                } catch (ExecutionException exception) {
+                    showError("Could not search courses", exception.getCause());
+                }
+            }
+        }.execute();
+    }
+
+    private void addSelectedCourses() {
+        List<Course> selected = searchList.getSelectedValuesList();
+        if (selected.isEmpty()) {
+            statusLabel.setText("Select at least one course section to add.");
+            return;
+        }
+
+        Student.AddCoursesResult result = currentStudent().addCoursesWithResult(
+            selected.toArray(Course[]::new)
+        );
+        statusLabel.setText(messageFor(result));
+        if (result == Student.AddCoursesResult.ADDED) {
+            refreshRegisteredCourses();
         }
     }
 
-    private String prompt(String message) {
-        System.out.print(message);
-        System.out.flush();
-        return input.hasNextLine() ? input.nextLine() : "";
+    private void dropSelectedCourses() {
+        List<Course> selected = registeredList.getSelectedValuesList();
+        if (selected.isEmpty()) {
+            statusLabel.setText("Select at least one registered course to drop.");
+            return;
+        }
+
+        currentStudent().dropCourses(selected.toArray(Course[]::new));
+        refreshRegisteredCourses();
+        statusLabel.setText("Selected course(s) dropped.");
+    }
+
+    private void dropAllCourses() {
+        if (registeredCourses.isEmpty()) {
+            statusLabel.setText("There are no registered courses to drop.");
+            return;
+        }
+        currentStudent().dropAllCourses();
+        refreshRegisteredCourses();
+        statusLabel.setText("All courses dropped.");
+    }
+
+    private void refreshRegisteredCourses() {
+        registeredCourses.clear();
+        for (Course course : currentStudent().getCourses()) {
+            registeredCourses.addElement(course);
+        }
+        registeredCreditsLabel.setText(
+            currentStudent().getRegisteredCredits().stripTrailingZeros().toPlainString()
+                + " / " + Student.MAX_CREDITS + " credits"
+        );
+    }
+
+    private void setSearchBusy(boolean busy) {
+        searchButton.setEnabled(!busy);
+        subjectField.setEnabled(!busy);
+        addButton.setEnabled(!busy);
+    }
+
+    private void showError(String title, Throwable error) {
+        String message = error == null || error.getMessage() == null
+            ? "An unexpected error occurred."
+            : error.getMessage();
+        JOptionPane.showMessageDialog(
+            frame,
+            message,
+            title,
+            JOptionPane.ERROR_MESSAGE
+        );
+        statusLabel.setText(title + ": " + message);
+    }
+
+    private static String messageFor(Student.AddCoursesResult result) {
+        return switch (result) {
+            case ADDED -> "Course(s) added.";
+            case NO_COURSES -> "No courses were selected.";
+            case COURSE_LIMIT_EXCEEDED -> "Could not add course(s): registration "
+                + "would exceed the " + Student.MAX_CREDITS + "-credit limit.";
+            case COURSE_CREDITS_UNKNOWN -> "Could not add course(s): credit "
+                + "hours are unavailable for a selected course, so the credit "
+                + "limit cannot be verified.";
+            case COURSE_NOT_OPEN -> "Could not add course(s): at least one "
+                + "selected section is not open; it may be full.";
+            case ALREADY_REGISTERED -> "Could not add course(s): at least one "
+                + "selected section is already on your schedule.";
+            case TIME_CONFLICT -> "Could not add course(s): at least one "
+                + "selected section has a meeting-time conflict.";
+        };
+    }
+
+    private static JList<Course> createCourseList(DefaultListModel<Course> model) {
+        JList<Course> list = new JList<>(model);
+        list.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
+        list.setCellRenderer(new DefaultListCellRenderer() {
+            @Override
+            public java.awt.Component getListCellRendererComponent(
+                JList<?> list,
+                Object value,
+                int index,
+                boolean isSelected,
+                boolean cellHasFocus
+            ) {
+                JLabel label = (JLabel) super.getListCellRendererComponent(
+                    list, value, index, isSelected, cellHasFocus
+                );
+                label.setText(courseDescription((Course) value));
+                label.setBorder(BorderFactory.createEmptyBorder(6, 6, 6, 6));
+                return label;
+            }
+        });
+        return list;
+    }
+
+    private static String courseDescription(Course course) {
+        String title = course.courseTitle() == null || course.courseTitle().isBlank()
+            ? "Title TBA"
+            : course.courseTitle().replace("&amp;", "&");
+        List<String> meetings = new ArrayList<>();
+        if (course.meetingsFaculty() != null) {
+            course.meetingsFaculty().stream()
+                .filter(meeting -> meeting != null)
+                .map(Course.MeetingFaculty::toString)
+                .forEach(meetings::add);
+        }
+        String meetingDescription = meetings.isEmpty()
+            ? "Meeting time TBA"
+            : String.join("; ", meetings);
+        String availability = Boolean.TRUE.equals(course.openSection())
+            ? "Open"
+            : "Closed / full";
+        return "<html><b>" + escapeHtml(course.toString()) + "</b> &mdash; "
+            + escapeHtml(title) + "<br>"
+            + escapeHtml(course.creditsDescription()) + " | "
+            + escapeHtml(meetingDescription) + " | " + availability + "</html>";
+    }
+
+    private static String escapeHtml(String value) {
+        return value.replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;");
     }
 
     static List<Course> filterCourses(
@@ -368,7 +438,10 @@ public class MainMenu {
         }
         return course.meetingsFaculty().stream()
             .filter(meeting -> meeting != null)
-            .anyMatch(meeting -> containsInstructor(meeting.faculty(), instructorFilter));
+            .anyMatch(meeting -> containsInstructor(
+                meeting.faculty(),
+                instructorFilter
+            ));
     }
 
     private static boolean containsInstructor(
@@ -415,33 +488,5 @@ public class MainMenu {
             case "u", "sun", "sunday" -> "U";
             default -> null;
         };
-    }
-
-    private static void displayCourse(Course course) {
-        String title = course.courseTitle() == null || course.courseTitle().isBlank()
-            ? "Title TBA"
-            : course.courseTitle().replace("&amp;", "&");
-        String courseDetails = course + ", " + course.creditsDescription()
-            + ", " + title;
-
-        List<Course.MeetingFaculty> meetings = course.meetingsFaculty();
-        if (meetings == null || meetings.isEmpty()) {
-            System.out.println(courseDetails + ", Meeting time TBA");
-            return;
-        }
-
-        boolean printedCourseDetails = false;
-        for (Course.MeetingFaculty meeting : meetings) {
-            Course.MeetingTime time = meeting == null ? null : meeting.meetingTime();
-            String meetingDetails = time == null
-                ? "Meeting time TBA"
-                : meeting.toString();
-            if (!printedCourseDetails) {
-                System.out.println(courseDetails + ", " + meetingDetails);
-                printedCourseDetails = true;
-            } else {
-                System.out.println("  " + meetingDetails);
-            }
-        }
     }
 }
