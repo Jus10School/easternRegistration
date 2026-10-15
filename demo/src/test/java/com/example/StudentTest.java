@@ -5,6 +5,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import java.math.BigDecimal;
+import java.util.Arrays;
 import java.util.List;
 
 import org.junit.Test;
@@ -71,24 +72,53 @@ public class StudentTest {
     }
 
     @Test
-    public void enforcesCourseLimitAndAllowsRegistrationAfterDrop() {
+    public void enforcesCreditLimitAndAllowsRegistrationAfterDrop() {
         Student student = new Student("s123", "Ada", "Lovelace");
-        Course[] courses = new Course[Student.MAX_CREDITS + 1];
-        for (int index = 0; index < courses.length; index++) {
-            courses[index] = course(Integer.toString(index), true);
+        Course[] courses = new Course[6];
+        for (int index = 0; index < 5; index++) {
+            courses[index] = course(Integer.toString(index), true, 3);
         }
+        courses[5] = course("5", true, 3);
 
-        assertEquals(
-            Student.AddCoursesResult.COURSE_LIMIT_EXCEEDED,
-            student.addCoursesWithResult(courses)
-        );
-        assertTrue(student.getCourses().isEmpty());
-        assertTrue(student.addCourses(
-            java.util.Arrays.copyOf(courses, Student.MAX_CREDITS)
-        ));
+        assertTrue(student.addCourses(Arrays.copyOf(courses, 5)));
+        assertEquals(new BigDecimal("15"), student.getRegisteredCredits());
+        assertEquals(Student.AddCoursesResult.COURSE_LIMIT_EXCEEDED,
+            student.addCoursesWithResult(courses[5]));
+        assertEquals(5, student.getCourses().size());
+        assertEquals(new BigDecimal("15"), student.getRegisteredCredits());
+
         assertTrue(student.dropCourse(courses[0]));
-        assertTrue(student.addCourse(courses[Student.MAX_CREDITS]));
-        assertEquals(Student.MAX_CREDITS, student.getCourses().size());
+        assertTrue(student.addCourse(courses[5]));
+        assertEquals(new BigDecimal("15"), student.getRegisteredCredits());
+        assertEquals(5, student.getCourses().size());
+    }
+
+    @Test
+    public void usesMaximumCreditsForVariableCreditCourses() {
+        Student student = new Student("s123", "Ada", "Lovelace");
+        Course fifteenCredits = course("1", true, 15);
+        Course variableCourse = new Course(
+            "2", "CSC", "200", "02", "Variable",
+            null, new BigDecimal("1"), new BigDecimal("3"),
+            true, List.of(), List.of()
+        );
+        assertTrue(student.addCourse(fifteenCredits));
+        assertEquals(Student.AddCoursesResult.COURSE_LIMIT_EXCEEDED,
+            student.addCoursesWithResult(variableCourse));
+        assertEquals(new BigDecimal("15"), student.getRegisteredCredits());
+    }
+
+    @Test
+    public void rejectsCoursesWithUnknownCreditHours() {
+        Student student = new Student("s123", "Ada", "Lovelace");
+        Course unknownCredits = new Course(
+            "1", "CSC", "200", "01", "Unknown credits",
+            null, null, null, true, List.of(), List.of()
+        );
+
+        assertEquals(Student.AddCoursesResult.COURSE_CREDITS_UNKNOWN,
+            student.addCoursesWithResult(unknownCredits));
+        assertTrue(student.getCourses().isEmpty());
     }
 
     @Test
@@ -110,13 +140,22 @@ public class StudentTest {
         boolean open,
         Course.MeetingFaculty... meetings
     ) {
+        return course(id, open, 3, meetings);
+    }
+
+    private static Course course(
+        String id,
+        boolean open,
+        int credits,
+        Course.MeetingFaculty... meetings
+    ) {
         return new Course(
             id,
             "CSC",
             "100",
             id,
             "Course " + id,
-            BigDecimal.valueOf(3),
+            BigDecimal.valueOf(credits),
             null,
             null,
             open,
