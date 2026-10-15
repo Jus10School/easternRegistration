@@ -4,11 +4,6 @@ hide empty members
 skinparam classAttributeIconSize 0
 
 package "com.example" {
-  class EasternRegistration {
-    - EasternRegistration()
-    +{static} main(args: String[]): void
-  }
-
   class MainMenu <<Swing GUI>> {
     - schedule: EasternSchedule
     - student: Student
@@ -136,9 +131,6 @@ package "com.example" {
     + toString(): String
   }
 }
-
-EasternRegistration ..> EasternSchedule : creates
-EasternRegistration ..> MainMenu : launches on Swing EDT
 
 MainMenu --> "1" EasternSchedule : queries terms and courses
 MainMenu --> "0..1" Student : active student

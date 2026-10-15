@@ -1,6 +1,7 @@
 package com.example;
 
 import java.math.BigDecimal;
+import java.time.DateTimeException;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -169,10 +170,14 @@ public record Course(
             if (value == null || !value.matches("\\d{4}")) {
                 return null;
             }
-            return LocalTime.of(
-                Integer.parseInt(value.substring(0, 2)),
-                Integer.parseInt(value.substring(2, 4))
-            );
+            try {
+                return LocalTime.of(
+                    Integer.parseInt(value.substring(0, 2)),
+                    Integer.parseInt(value.substring(2, 4))
+                );
+            } catch (DateTimeException exception) {
+                return null;
+            }
         }
     }
 
