@@ -218,10 +218,6 @@ public class MainMenu {
         cardLayout.show(cards, REGISTRATION_CARD);
     }
 
-    private Student currentStudent() {
-        return student;
-    }
-
     private void searchCourses() {
         String subject = subjectField.getText().trim();
         if (subject.isEmpty()) {
@@ -276,7 +272,7 @@ public class MainMenu {
             return;
         }
 
-        Student.AddCoursesResult result = currentStudent().addCoursesWithResult(
+        Student.AddCoursesResult result = student.addCoursesWithResult(
             selected.toArray(Course[]::new)
         );
         statusLabel.setText(messageFor(result));
@@ -292,7 +288,7 @@ public class MainMenu {
             return;
         }
 
-        currentStudent().dropCourses(selected.toArray(Course[]::new));
+        student.dropCourses(selected.toArray(Course[]::new));
         refreshRegisteredCourses();
         statusLabel.setText("Selected course(s) dropped.");
     }
@@ -302,18 +298,18 @@ public class MainMenu {
             statusLabel.setText("There are no registered courses to drop.");
             return;
         }
-        currentStudent().dropAllCourses();
+        student.dropAllCourses();
         refreshRegisteredCourses();
         statusLabel.setText("All courses dropped.");
     }
 
     private void refreshRegisteredCourses() {
         registeredCourses.clear();
-        for (Course course : currentStudent().getCourses()) {
+        for (Course course : student.getCourses()) {
             registeredCourses.addElement(course);
         }
         registeredCreditsLabel.setText(
-            currentStudent().getRegisteredCredits().stripTrailingZeros().toPlainString()
+            student.getRegisteredCredits().stripTrailingZeros().toPlainString()
                 + " / " + Student.MAX_CREDITS + " credits"
         );
     }
