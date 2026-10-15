@@ -1,9 +1,10 @@
 package com.example;
+
 import java.util.ArrayList;
+import java.util.Scanner;
 
 /**
- * 
- * The main application for the Eastern Registration system
+ * Entry point for the Eastern Registration system.
  */
 public class EasternRegistration {
     
@@ -15,61 +16,41 @@ public class EasternRegistration {
     /**
      * Main entry point of application
      * @param args not used
-     * @throws Exception if cannot retreive courses
+     * @throws Exception if a course lookup fails
      */
     public static void main(String[] args) throws Exception {
-        
-        // Create EasternSchedule object
         EasternSchedule easternSchedule = new EasternSchedule();
-    
+
         System.out.println("Current Term Code: " + easternSchedule.getTerm());
         System.out.println();
-          
-        ArrayList<Term> terms = easternSchedule.getAvailableTerms();
 
-        System.out.println("\n");
-        int i = 0;
-        for (Term term : terms) {
+        ArrayList<Term> terms = easternSchedule.getAvailableTerms();
+        if (!terms.isEmpty()) {
+            Term term = terms.get(0);
             System.out.println("Term Code: " + term.code());
             System.out.println("Term Description: " + term.description());
-            System.out.println("");
-            i++;
-            if (i >= 1) {
-                break;
-            }
-        }        
+            System.out.println();
+        }
 
-        //retreive all CSC courses
         ArrayList<Course> courses = easternSchedule.queryCourseBySubject("CSC");
-
         System.out.println();
-
-        // Display info for each course (up to 3)
         System.out.println("List of courses (max = 3)");
-        int number = 0;        
-        for (Course c : courses) {
-            System.out.println(c);
-            number++;
-            if (number >= 3) break;
+        for (int i = 0; i < Math.min(3, courses.size()); i++) {
+            System.out.println(courses.get(i));
         }
 
         System.out.println();
+        if (!courses.isEmpty()) {
+            Course firstCourse = courses.get(0);
+            System.out.println("Subject, number, and meetingFaculty for first course:");
+            System.out.println("Subject: " + firstCourse.subject());
+            System.out.println("Course Number: " + firstCourse.courseNumber());
+            if (firstCourse.meetingsFaculty() != null
+                && !firstCourse.meetingsFaculty().isEmpty()) {
+                System.out.println(firstCourse.meetingsFaculty().get(0));
+            }
+        }
 
-        // Demonstrate course getter methods
-        System.out.println("Subject, number, and meetingFaculty for first course:");
-        for (Course c : courses) {
-
-            // Demonstrate subject and courseNumber getter methods
-            System.out.println("Subject: " + c.subject());
-            System.out.println("Course Number: " + c.courseNumber());
-
-            // Demonstrate meetingsFaculty getter method. Since
-            // meetingsFaculty is a list, we use the get method for this.
-            System.out.println(c.meetingsFaculty().get(0));
-            break;
-        }        
+        new MainMenu(easternSchedule, new Scanner(System.in)).run();
     }
-
-
-
 }
