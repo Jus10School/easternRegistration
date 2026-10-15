@@ -1,7 +1,6 @@
 package com.example;
 
 import java.io.IOException;
-
 import java.net.CookieManager;
 import java.net.URI;
 import java.net.URLEncoder;
@@ -15,113 +14,94 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
- * 
- * Provides access to Eastern's schedule of classes for a specified term,
- * using cached values if available
+ * Retrieves Eastern course sections by academic term and subject, using
+ * cached JSON responses when available.
+ *
+ * <p>Cache files are read from the project's {@code cache} directory and
+ * fetched responses are written there for later lookups.</p>
  */
 public class EasternSchedule {
 
     private static final String BASE = "https://reg-prod.ec.easternct.edu/StudentRegistrationSsb";
-    private String term;
-
-    CookieManager cookieManager;
-    HttpClient client;
-
+    private static final String DEFAULT_TERM = "202710";
+    private final HttpClient client;
 
     /**
-     * 
-     * Constructs an EasternSchedule object with default term
+     * Creates a schedule client configured for the default term.
      */
-    public EasternSchedule()  {
-
-        // set term (202710 is Fall 2026)
-        this.term = "202710"; 
-
-        // set cookieManager and build client for web retreival        
-        cookieManager = new CookieManager();
+    public EasternSchedule() {
+        CookieManager cookieManager = new CookieManager();
         cookieManager.setCookiePolicy(CookiePolicy.ACCEPT_ALL);
-        
-        client = HttpClient.newBuilder()
-        .cookieHandler(cookieManager)
-        .build();
 
+        client = HttpClient.newBuilder()
+            .cookieHandler(cookieManager)
+            .build();
     }
 
     /**
-     * Accessor for term code
-     * @return The term code
+     * Returns the academic term code used as the default selection.
+     *
+     * @return the default term code
      */
     public String getTerm() {
-        return term;
+        return DEFAULT_TERM;
     }
 
     /**
-     * Retrieves available terms (max of 25) from the Eastern's schedule, or from cache
-     * if available
-     * @return A JSON string representing the available terms
-     * @throws IOException if cache file exists but cannot be read
-     * @throws InterruptedException if a web request is interrupted
+     * Retrieves available terms from the local cache, or from Eastern if the
+     * cache does not exist.
+     *
+     * @return available academic terms in the order returned by Eastern
+     * @throws IOException if term data cannot be read or parsed
+     * @throws InterruptedException if the request is interrupted
      */
-    private String retrieveTerms() throws IOException, InterruptedException {
+    public ArrayList<Term> getAvailableTerms() throws IOException, InterruptedException {
         Path cacheFile = getCacheFile("terms.txt");
         String content;
-
         if (Files.exists(cacheFile)) {
-            System.out.println("Using cached term data from " + cacheFile + "...");
             content = Files.readString(cacheFile);
-            return content;
-        }
-
-        System.out.println("Retrieving data from URL ...");        
-        String url = BASE + "/ssb/classSearch/getTerms?offset=1&max=25&searchTerm=";
-        
-        HttpRequest request = HttpRequest.newBuilder()
+        } else {
+            String url = BASE + "/ssb/classSearch/getTerms?offset=1&max=25&searchTerm=";
+            HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(url))
                 .GET()
                 .header("Accept", "application/json")
                 .build();
-
-        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-        
-        if (response.statusCode() != 200) {
-            throw new IOException("Unexpected response status: " + response.statusCode());
+            HttpResponse<String> response = client.send(
+                request,
+                HttpResponse.BodyHandlers.ofString()
+            );
+            if (response.statusCode() != 200) {
+                throw new IOException(
+                    "Could not retrieve terms: HTTP " + response.statusCode()
+                );
+            }
+            content = response.body();
+            Files.createDirectories(cacheFile.getParent());
+            Files.writeString(cacheFile, content);
         }
 
-        content = response.body();
-        Files.createDirectories(cacheFile.getParent());
-        Files.writeString(cacheFile, content);
-
-        return content; 
+        return new ObjectMapper().readValue(
+            content,
+            new TypeReference<ArrayList<Term>>() {}
+        );
     }
 
     /**
-     * Parses the JSON content of available terms into an Arrayist of Terms
-     * @param content The JSON string representing the available terms
-     * @return An ArrayList of Terms
-     * @throws IOException if terms cannot be parsed
+     * Parses course records from the response's {@code data} array.
+     *
+     * @param content JSON response content
+     * @return parsed course sections
+     * @throws JsonProcessingException if the JSON cannot be parsed
      */
-    private ArrayList<Term> parseTerms(String content) throws IOException {
-        ObjectMapper mapper = new ObjectMapper();
-        ArrayList<Term> terms = mapper.readValue(
-            content,
-            new TypeReference<ArrayList<Term>>() {}            
-        );
-
-        return terms;
-    }
-
-    /** 
-     * Parses content into a list of courses
-     * @param content the content to parse
-     * @return ArrayList<Course> an {@link ArrayList} of {@link Course} objects
-     * @throws IOException
-     */
-    private ArrayList<Course> parseCourses(String content) throws IOException {
+    private ArrayList<Course> parseCourses(String content)
+        throws JsonProcessingException {
         ObjectMapper mapper = new ObjectMapper();
         JsonNode dataNode = mapper.readTree(content).get("data");        
         ArrayList<Course> courses = mapper.convertValue(dataNode, new TypeReference<ArrayList<Course>>() {});
@@ -129,30 +109,18 @@ public class EasternSchedule {
     }
 
     /**
-     * Retrieves and parses the available terms from Eastern's schedule
-     * @return An ArrayList of Term objects
-     * @throws IOException if cannot parse terms
-     * @throws InterruptedException if a web request is interrupted
+     * Selects the configured term in Eastern's registration service.
+     *
+     * @param termCode academic term code to select
+     * @throws IOException if Eastern rejects the term selection
+     * @throws InterruptedException if the request is interrupted
      */
-    public ArrayList<Term>getAvailableTerms() throws IOException, InterruptedException {
-
-        String content = retrieveTerms();
-        ArrayList<Term> terms = parseTerms(content);
-        return terms;
-    }
-
-    /**
-     * Sets the term for the Eastern schedule
-     * @return The response body from the server after setting the term
-     * @throws Exception If there is an error during the HTTP request
-     */
-
-    private String postTerm() throws Exception {
+    private void postTerm(String termCode) throws IOException, InterruptedException {
 
         String url = BASE + "/ssb/term/search?mode=search";
 
         String body =
-            "term=" + URLEncoder.encode(term, StandardCharsets.UTF_8) +
+            "term=" + URLEncoder.encode(termCode, StandardCharsets.UTF_8) +
             "&studyPath=" +
             "&studyPathText=" +
             "&startDatepicker=" +
@@ -167,21 +135,23 @@ public class EasternSchedule {
             .POST(HttpRequest.BodyPublishers.ofString(body))            
             .build();
 
-        HttpResponse<String> response =
-            client.send(request, HttpResponse.BodyHandlers.ofString());
+        HttpResponse<Void> response =
+            client.send(request, HttpResponse.BodyHandlers.discarding());
 
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
-            throw new RuntimeException(
-                "setTerm failed: " + response.statusCode()
+            throw new IOException(
+                "Could not select term " + termCode + ": HTTP "
+                    + response.statusCode()
             );
         }
 
-        return response.body();
-}
+    }
 
-    /** 
-     * @param subject
-     * @return Path
+    /**
+     * Resolves a cache file under the project's cache directory.
+     *
+     * @param fileName name of the cache file
+     * @return path to the cache file
      */
     private Path getCacheFile(String fileName) {
         Path cacheDirectory = Path.of("cache");
@@ -192,27 +162,30 @@ public class EasternSchedule {
     }
 
     /**
-     * Caches courses for current term and specified subject. Does nothing
-     * if cache file already exists; otherwise retreives data from webserver
+     * Fetches and caches courses for the specified term and subject if the
+     * corresponding cache file does not already exist.
+     *
+     * @param termCode academic term code
      * @param subject the subject to cache courses for
-     * @throws Exception if there is an error connecting to the webserver
+     * @throws IOException if the request or cache operation fails
+     * @throws InterruptedException if an HTTP request is interrupted
      */
-    private void cacheCourses(String subject) throws Exception {
+    private void cacheCourses(String termCode, String subject)
+        throws IOException, InterruptedException {
         
-        Path cacheFile = getCacheFile("term_" + term + "_" + subject + ".txt");
+        Path cacheFile = getCacheFile("term_" + termCode + "_" + subject + ".txt");
 
         // if file already exists, return
         if (Files.exists(cacheFile)) {            
-           System.out.println("Using cached term data from " + cacheFile + "...");
            return;           
         }
 
         // post request to establish term is required
-        String term_response = postTerm();
+        postTerm(termCode);
 
         String url = BASE + "/ssb/searchResults/searchResults?" +
         "txt_subject=" + subject + "&" +
-        "txt_term=" + term + "&" +
+        "txt_term=" + URLEncoder.encode(termCode, StandardCharsets.UTF_8) + "&" +
         "startDatepicker=&endDatepicker=&pageOffset=0&pageMaxSize=500&sortColumn=subjectDescription&sortDirection=asc";
                                                     
         HttpRequest request = HttpRequest.newBuilder()
@@ -227,8 +200,9 @@ public class EasternSchedule {
             client.send(request, HttpResponse.BodyHandlers.ofString());
 
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
-            throw new RuntimeException(
-                "searchClasses failed: " + response.statusCode() + "\n" + response.body()
+            throw new IOException(
+                "Course search failed: HTTP " + response.statusCode()
+                    + "\n" + response.body()
             );
         }
 
@@ -237,21 +211,28 @@ public class EasternSchedule {
         Files.writeString(cacheFile, response.body());
     }
 
-    /** 
-     * Queries courses based on subject. First, we retreive data from the 
-     * server and create a cached file if the file does not exist. Then we
-     * extract courses from the appropriate file.
-     * @param subject the subject of courses to retrieve
-     * @return an {@link ArrayList} of {@link Course} objects
-     * @throws Exception if there is an error in retreiving courses
+    /**
+     * Queries course sections by term and subject, using the cache when
+     * available and fetching the response otherwise.
+     *
+     * @param termCode non-blank academic term code
+     * @param subject non-blank subject code to retrieve
+     * @return matching course sections
+     * @throws IOException if the request, cache operation, or JSON parsing fails
+     * @throws InterruptedException if an HTTP request is interrupted
      */
-    public ArrayList<Course> queryCourseBySubject(String subject) throws Exception {
-        
-        cacheCourses(subject);
-        Path cacheFile = getCacheFile("term_" + term + "_" + subject + ".txt");
+    public ArrayList<Course> queryCourseBySubject(String termCode, String subject)
+        throws IOException, InterruptedException {
+        if (termCode == null || termCode.isBlank()) {
+            throw new IllegalArgumentException("termCode must not be blank");
+        }
+        if (subject == null || subject.isBlank()) {
+            throw new IllegalArgumentException("subject must not be blank");
+        }
+        cacheCourses(termCode, subject);
+        Path cacheFile = getCacheFile("term_" + termCode + "_" + subject + ".txt");
         String content = Files.readString(cacheFile);
-        
-        ArrayList<Course> courses = parseCourses(content);
-        return courses;
-    }   
+
+        return parseCourses(content);
+    }
 }

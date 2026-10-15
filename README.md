@@ -1,28 +1,26 @@
-# Eastern Registration Java Project
+# Eastern Registration
 
-## Student registration
+A Java desktop app for searching Eastern course sections and managing a student schedule.
 
-`com.example.Student` represents a student by ID, first name, and last name.
-Students can register for courses up to `Student.MAX_CREDITS` total credits
-with `addCourse` or `addCourses`. For variable-credit courses the upper credit
-value is counted toward the limit. A registration is rejected if a section is
-not open, duplicates an existing registration, exceeds the credit limit,
-overlaps an existing meeting time, or has unknown credit hours. `addCourses` is
-atomic: it adds none of the supplied courses if any one cannot be registered.
+## Requirements
 
-Use `dropCourse` or `dropCourses` to remove specific sections, and
-`dropAllCourses` to clear the student's schedule. `getCourses` returns an
-immutable snapshot of the current registrations.
+- Java 17 or later
+- Maven
 
-The desktop app opens a graphical student setup screen. Enter the student's
-ID and name, then search by subject to find course sections. Search results can
-be filtered by course number, open status, instructor, or an excluded weekday
-(Monday through Friday; **None** is the default).
-Select one or more open sections to register; select registered sections to
-drop them, or use **Drop All** to clear the schedule. The registered-course
-panel shows the student's current credit total against the limit. Registration
-limits, closed sections, duplicate registrations, unknown credits, and time
-conflicts are reported in the status area.
+## Build
 
-`EasternRegistration` launches the graphical `MainMenu`; there is no separate
-console menu.
+From the project root:
+
+```bash
+mvn -f demo/pom.xml package
+```
+
+## Run
+
+From the `demo` directory:
+
+```bash
+mvn exec:java -Dexec.mainClass=com.example.EasternRegistration
+```
+
+Course data is read from the `cache` directory when available. The app can fetch data from Eastern when it is not cached.

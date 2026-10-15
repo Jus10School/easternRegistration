@@ -3,7 +3,7 @@ package com.example;
 import javax.swing.SwingUtilities;
 
 /**
- * Entry point for the Eastern Registration system.
+ * Launches the Eastern Registration graphical application.
  */
 public class EasternRegistration {
     
@@ -13,8 +13,9 @@ public class EasternRegistration {
     }
 
     /**
-     * Main entry point of application.
-     * @param args not used
+     * Starts the GUI on Swing's event-dispatch thread.
+     *
+     * @param args command-line arguments (currently unused)
      */
     public static void main(String[] args) {
         EasternSchedule easternSchedule = new EasternSchedule();
