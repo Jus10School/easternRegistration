@@ -2,24 +2,30 @@ package com.example;
 
 import java.awt.BorderLayout;
 import java.awt.CardLayout;
+import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
+import java.awt.Image;
 import java.awt.Insets;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 import javax.swing.BorderFactory;
+import javax.swing.Box;
+import javax.swing.BoxLayout;
 import javax.swing.JCheckBox;
 import javax.swing.DefaultListCellRenderer;
 import javax.swing.DefaultListModel;
 import javax.swing.JButton;
 import javax.swing.JComboBox;
 import javax.swing.JFrame;
+import javax.swing.ImageIcon;
 import javax.swing.JLabel;
 import javax.swing.JList;
 import javax.swing.JOptionPane;
@@ -31,7 +37,11 @@ import javax.swing.SwingConstants;
 import javax.swing.SwingWorker;
 
 /**
- * Graphical main menu for student creation and course registration.
+ * Graphical entry point for student details and course registration.
+ *
+ * <p>The interface loads available terms, searches and filters course
+ * sections, and lets a student add or drop sections in the current in-memory
+ * schedule.</p>
  */
 public class MainMenu {
 
@@ -40,6 +50,7 @@ public class MainMenu {
 
     private final EasternSchedule schedule;
     private final JFrame frame = new JFrame("Eastern Registration");
+    private final ImageIcon logoIcon = loadLogoIcon();
     private Student student;
     private final CardLayout cardLayout = new CardLayout();
     private final JPanel cards = new JPanel(cardLayout);
@@ -49,6 +60,7 @@ public class MainMenu {
     private final JTextField subjectField = new JTextField(12);
     private final JTextField courseNumberField = new JTextField(7);
     private final JTextField instructorField = new JTextField(12);
+    private final JComboBox<Term> termCombo = new JComboBox<>();
     private final JComboBox<String> excludedDayCombo = new JComboBox<>(
         new String[] {"None", "Monday", "Tuesday", "Wednesday", "Thursday",
             "Friday"}
@@ -64,9 +76,25 @@ public class MainMenu {
     private final JLabel statusLabel = new JLabel("Search by subject to find courses.");
     private final JButton searchButton = new JButton("Search Courses");
     private final JButton addButton = new JButton("Add Selected");
+    private boolean termsLoading;
+    private boolean termsLoaded;
 
+    /**
+     * Creates the registration window backed by the supplied schedule service.
+     *
+     * @param schedule service used to search Eastern's course schedule
+     */
     public MainMenu(EasternSchedule schedule) {
         this.schedule = schedule;
+        termCombo.setEnabled(false);
+        termCombo.setToolTipText(
+            "The selected term cannot be changed while courses are registered."
+        );
+        termCombo.addActionListener(event -> {
+            searchResults.clear();
+            searchList.clearSelection();
+        });
+        searchButton.setEnabled(false);
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         frame.setMinimumSize(new Dimension(900, 620));
         frame.setContentPane(cards);
@@ -76,8 +104,66 @@ public class MainMenu {
         frame.setLocationRelativeTo(null);
     }
 
+    /** Displays the registration window. */
     public void show() {
         frame.setVisible(true);
+        loadTerms();
+    }
+
+    /**
+     * Loads available terms once and enables course search after success.
+     *
+     * <p>The network or cache operation runs off the Swing event-dispatch
+     * thread; any failure is reported in the window.</p>
+     */
+    private void loadTerms() {
+        if (termsLoaded || termsLoading) {
+            return;
+        }
+
+        termsLoading = true;
+        statusLabel.setText("Loading academic terms...");
+        new SwingWorker<List<Term>, Void>() {
+            @Override
+            protected List<Term> doInBackground() throws Exception {
+                return schedule.getAvailableTerms();
+            }
+
+            @Override
+            protected void done() {
+                termsLoading = false;
+                try {
+                    List<Term> terms = get();
+                    if (terms.isEmpty()) {
+                        throw new IllegalStateException(
+                            "Eastern returned no available academic terms."
+                        );
+                    }
+                    for (Term term : terms) {
+                        termCombo.addItem(term);
+                    }
+                    for (int index = 0; index < termCombo.getItemCount(); index++) {
+                        if (schedule.getTerm().equals(
+                            termCombo.getItemAt(index).code()
+                        )) {
+                            termCombo.setSelectedIndex(index);
+                            break;
+                        }
+                    }
+                    termsLoaded = true;
+                    termCombo.setEnabled(true);
+                    searchButton.setEnabled(true);
+                    statusLabel.setText("Search by subject to find courses.");
+                } catch (InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                    showError("Loading terms was interrupted", exception);
+                } catch (ExecutionException exception) {
+                    showError("Could not load academic terms", exception.getCause());
+                } catch (RuntimeException exception) {
+                    showError("Could not load academic terms", exception);
+                }
+            }
+        }.execute();
     }
 
     private JPanel createStudentPanel() {
@@ -87,13 +173,24 @@ public class MainMenu {
         JLabel title = new JLabel("Eastern Registration", SwingConstants.CENTER);
         title.setFont(title.getFont().deriveFont(Font.BOLD, 26f));
         JLabel subtitle = new JLabel(
-            "Enter student information to manage course registration.",
+            "Student Login",
             SwingConstants.CENTER
         );
-        JPanel headings = new JPanel(new BorderLayout(4, 4));
-        headings.add(title, BorderLayout.NORTH);
-        headings.add(subtitle, BorderLayout.SOUTH);
-        page.add(headings, BorderLayout.NORTH);
+        JPanel textHeadings = new JPanel();
+        textHeadings.setLayout(new BoxLayout(textHeadings, BoxLayout.Y_AXIS));
+        title.setAlignmentX(Component.CENTER_ALIGNMENT);
+        subtitle.setAlignmentX(Component.CENTER_ALIGNMENT);
+        textHeadings.add(title);
+        textHeadings.add(Box.createVerticalStrut(8));
+        textHeadings.add(subtitle);
+
+        JPanel headings = new JPanel();
+        headings.setLayout(new BoxLayout(headings, BoxLayout.Y_AXIS));
+        JLabel logo = createLogoLabel(190, 150);
+        logo.setAlignmentX(Component.CENTER_ALIGNMENT);
+        headings.add(logo);
+        headings.add(Box.createVerticalStrut(12));
+        headings.add(textHeadings);
 
         JPanel form = new JPanel(new GridBagLayout());
         GridBagConstraints constraints = new GridBagConstraints();
@@ -109,7 +206,18 @@ public class MainMenu {
         constraints.gridy = 3;
         constraints.anchor = GridBagConstraints.LINE_START;
         form.add(createButton, constraints);
-        page.add(form, BorderLayout.CENTER);
+
+        JPanel studentSetup = new JPanel(new GridBagLayout());
+        GridBagConstraints setupConstraints = new GridBagConstraints();
+        setupConstraints.gridx = 0;
+        setupConstraints.anchor = GridBagConstraints.CENTER;
+        setupConstraints.gridy = 0;
+        setupConstraints.insets = new Insets(0, 0, 12, 0);
+        studentSetup.add(headings, setupConstraints);
+        setupConstraints.gridy = 1;
+        setupConstraints.insets = new Insets(0, 0, 0, 0);
+        studentSetup.add(form, setupConstraints);
+        page.add(studentSetup, BorderLayout.CENTER);
         return page;
     }
 
@@ -135,14 +243,19 @@ public class MainMenu {
 
         JLabel title = new JLabel("Student Course Registration");
         title.setFont(title.getFont().deriveFont(Font.BOLD, 22f));
-        JPanel header = new JPanel(new BorderLayout(8, 8));
-        header.add(title, BorderLayout.NORTH);
-        header.add(studentLabel, BorderLayout.SOUTH);
+        JPanel headerText = new JPanel(new BorderLayout(8, 8));
+        headerText.add(title, BorderLayout.NORTH);
+        headerText.add(studentLabel, BorderLayout.SOUTH);
+        JPanel header = new JPanel(new BorderLayout(16, 4));
+        header.add(createLogoLabel(130, 100), BorderLayout.WEST);
+        header.add(headerText, BorderLayout.CENTER);
         page.add(header, BorderLayout.NORTH);
 
         JPanel courseSearchPanel = new JPanel(new BorderLayout(8, 8));
         courseSearchPanel.setBorder(BorderFactory.createTitledBorder("Find courses"));
         JPanel searchControls = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
+        searchControls.add(new JLabel("Term:"));
+        searchControls.add(termCombo);
         searchControls.add(new JLabel("Subject:"));
         searchControls.add(subjectField);
         searchButton.addActionListener(event -> searchCourses());
@@ -151,7 +264,7 @@ public class MainMenu {
         filters.add(new JLabel("Course number:"));
         filters.add(courseNumberField);
         filters.add(openOnlyCheckBox);
-        filters.add(new JLabel("Instructor contains:"));
+        filters.add(new JLabel("Instructor name:"));
         filters.add(instructorField);
         filters.add(new JLabel("Exclude day:"));
         filters.add(excludedDayCombo);
@@ -161,9 +274,14 @@ public class MainMenu {
         courseSearchPanel.add(searchHeader, BorderLayout.NORTH);
         courseSearchPanel.add(new JScrollPane(searchList), BorderLayout.CENTER);
         addButton.addActionListener(event -> addSelectedCourses());
-        JPanel addControls = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        JButton backButton = new JButton("Back");
+        backButton.addActionListener(event -> returnToLogin());
+        JPanel courseActions = new JPanel(new BorderLayout());
+        courseActions.add(backButton, BorderLayout.WEST);
+        JPanel addControls = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
         addControls.add(addButton);
-        courseSearchPanel.add(addControls, BorderLayout.SOUTH);
+        courseActions.add(addControls, BorderLayout.EAST);
+        courseSearchPanel.add(courseActions, BorderLayout.SOUTH);
 
         JPanel registeredPanel = new JPanel(new BorderLayout(8, 8));
         registeredPanel.setBorder(BorderFactory.createTitledBorder("Registered courses"));
@@ -191,6 +309,9 @@ public class MainMenu {
         return page;
     }
 
+    /**
+     * Validates the login fields and opens registration for the new student.
+     */
     private void createStudent() {
         String id = idField.getText().trim();
         String firstName = firstNameField.getText().trim();
@@ -218,10 +339,47 @@ public class MainMenu {
         cardLayout.show(cards, REGISTRATION_CARD);
     }
 
+    /**
+     * Returns to student setup, asking before discarding registered courses.
+     */
+    private void returnToLogin() {
+        if (!student.getCourses().isEmpty()) {
+            int choice = JOptionPane.showConfirmDialog(
+                frame,
+                "Returning to login will discard this student's registered "
+                    + "courses. Continue?",
+                "Discard registered courses?",
+                JOptionPane.YES_NO_OPTION,
+                JOptionPane.WARNING_MESSAGE
+            );
+            if (choice != JOptionPane.YES_OPTION) {
+                return;
+            }
+        }
+
+        student = null;
+        idField.setText("");
+        firstNameField.setText("");
+        lastNameField.setText("");
+        searchResults.clear();
+        registeredCourses.clear();
+        searchList.clearSelection();
+        registeredList.clearSelection();
+        registeredCreditsLabel.setText("0 / " + Student.MAX_CREDITS + " credits");
+        termCombo.setEnabled(termsLoaded);
+        statusLabel.setText("Search by subject to find courses.");
+        cardLayout.show(cards, CREATE_STUDENT_CARD);
+        idField.requestFocusInWindow();
+    }
+
+    /** @return the current student, or {@code null} before one is created */
     private Student currentStudent() {
         return student;
     }
 
+    /**
+     * Searches the selected term and subject, then applies the active filters.
+     */
     private void searchCourses() {
         String subject = subjectField.getText().trim();
         if (subject.isEmpty()) {
@@ -232,11 +390,21 @@ public class MainMenu {
 
         setSearchBusy(true);
         statusLabel.setText("Searching courses...");
+        Term selectedTerm = (Term) termCombo.getSelectedItem();
+        if (selectedTerm == null) {
+            setSearchBusy(false);
+            statusLabel.setText("Select an academic term before searching.");
+            return;
+        }
         String normalizedSubject = subject.toUpperCase(java.util.Locale.ROOT);
+        String selectedTermCode = selectedTerm.code();
         new SwingWorker<List<Course>, Void>() {
             @Override
             protected List<Course> doInBackground() throws Exception {
-                return schedule.queryCourseBySubject(normalizedSubject);
+                return schedule.queryCourseBySubject(
+                    selectedTermCode,
+                    normalizedSubject
+                );
             }
 
             @Override
@@ -269,6 +437,7 @@ public class MainMenu {
         }.execute();
     }
 
+    /** Adds the selected search results if the student's schedule allows them. */
     private void addSelectedCourses() {
         List<Course> selected = searchList.getSelectedValuesList();
         if (selected.isEmpty()) {
@@ -285,6 +454,7 @@ public class MainMenu {
         }
     }
 
+    /** Drops the selected sections from the student's registered schedule. */
     private void dropSelectedCourses() {
         List<Course> selected = registeredList.getSelectedValuesList();
         if (selected.isEmpty()) {
@@ -297,6 +467,7 @@ public class MainMenu {
         statusLabel.setText("Selected course(s) dropped.");
     }
 
+    /** Drops every registered section when the schedule is nonempty. */
     private void dropAllCourses() {
         if (registeredCourses.isEmpty()) {
             statusLabel.setText("There are no registered courses to drop.");
@@ -307,6 +478,7 @@ public class MainMenu {
         statusLabel.setText("All courses dropped.");
     }
 
+    /** Refreshes the registered-section list, credit total, and term control. */
     private void refreshRegisteredCourses() {
         registeredCourses.clear();
         for (Course course : currentStudent().getCourses()) {
@@ -316,14 +488,29 @@ public class MainMenu {
             currentStudent().getRegisteredCredits().stripTrailingZeros().toPlainString()
                 + " / " + Student.MAX_CREDITS + " credits"
         );
+        termCombo.setEnabled(currentStudent().getCourses().isEmpty() && termsLoaded);
     }
 
+    /**
+     * Updates the enabled state of search, add, and term controls.
+     *
+     * @param busy whether a search is currently running
+     */
     private void setSearchBusy(boolean busy) {
         searchButton.setEnabled(!busy);
         subjectField.setEnabled(!busy);
         addButton.setEnabled(!busy);
+        termCombo.setEnabled(
+            !busy && termsLoaded && currentStudent().getCourses().isEmpty()
+        );
     }
 
+    /**
+     * Shows an error dialog and mirrors its message in the status area.
+     *
+     * @param title dialog and status title
+     * @param error cause to display
+     */
     private void showError(String title, Throwable error) {
         String message = error == null || error.getMessage() == null
             ? "An unexpected error occurred."
@@ -337,6 +524,12 @@ public class MainMenu {
         statusLabel.setText(title + ": " + message);
     }
 
+    /**
+     * Converts a registration result into user-facing status text.
+     *
+     * @param result outcome returned by the student registration operation
+     * @return status message for the outcome
+     */
     private static String messageFor(Student.AddCoursesResult result) {
         return switch (result) {
             case ADDED -> "Course(s) added.";
@@ -355,7 +548,13 @@ public class MainMenu {
         };
     }
 
-    private static JList<Course> createCourseList(DefaultListModel<Course> model) {
+    /**
+     * Creates a multi-select course list with the application's course renderer.
+     *
+     * @param model list model containing the course sections
+     * @return configured course list
+     */
+    private JList<Course> createCourseList(DefaultListModel<Course> model) {
         JList<Course> list = new JList<>(model);
         list.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
         list.setCellRenderer(new DefaultListCellRenderer() {
@@ -370,7 +569,10 @@ public class MainMenu {
                 JLabel label = (JLabel) super.getListCellRendererComponent(
                     list, value, index, isSelected, cellHasFocus
                 );
-                label.setText(courseDescription((Course) value));
+                label.setText(courseDescription(
+                    (Course) value,
+                    (Term) termCombo.getSelectedItem()
+                ));
                 label.setBorder(BorderFactory.createEmptyBorder(6, 6, 6, 6));
                 return label;
             }
@@ -378,7 +580,14 @@ public class MainMenu {
         return list;
     }
 
-    private static String courseDescription(Course course) {
+    /**
+     * Builds the HTML summary displayed for a course section.
+     *
+     * @param course course section to describe
+     * @param term selected term, or {@code null} if unavailable
+     * @return escaped, user-facing course summary
+     */
+    private static String courseDescription(Course course, Term term) {
         String title = course.courseTitle() == null || course.courseTitle().isBlank()
             ? "Title TBA"
             : course.courseTitle().replace("&amp;", "&");
@@ -392,22 +601,119 @@ public class MainMenu {
         String meetingDescription = meetings.isEmpty()
             ? "Meeting time TBA"
             : String.join("; ", meetings);
+        String instructorDescription = instructorNames(course);
         String availability = Boolean.TRUE.equals(course.openSection())
             ? "Open"
             : "Closed / full";
+        String termDescription = term == null
+            ? "Term unavailable"
+            : term.description();
         return "<html><b>" + escapeHtml(course.toString()) + "</b> &mdash; "
             + escapeHtml(title) + "<br>"
+            + escapeHtml(termDescription) + " | "
             + escapeHtml(course.creditsDescription()) + " | "
-            + escapeHtml(meetingDescription) + " | " + availability + "</html>";
+            + escapeHtml(meetingDescription) + " | "
+            + escapeHtml(instructorDescription) + " | "
+            + availability + "</html>";
     }
 
+    /**
+     * Collects distinct instructor names from section- and meeting-level data.
+     *
+     * @param course section whose instructor data is displayed
+     * @return instructor label, or {@code Instructor TBA} when none are present
+     */
+    private static String instructorNames(Course course) {
+        List<String> instructors = new ArrayList<>();
+        if (course.faculty() != null) {
+            course.faculty().stream()
+                .filter(faculty -> faculty != null)
+                .map(Course.Faculty::displayName)
+                .filter(name -> name != null && !name.isBlank())
+                .forEach(instructors::add);
+        }
+        if (course.meetingsFaculty() != null) {
+            course.meetingsFaculty().stream()
+                .filter(meeting -> meeting != null && meeting.faculty() != null)
+                .flatMap(meeting -> meeting.faculty().stream())
+                .filter(faculty -> faculty != null)
+                .map(Course.Faculty::displayName)
+                .filter(name -> name != null && !name.isBlank())
+                .forEach(instructors::add);
+        }
+        List<String> uniqueInstructors = instructors.stream().distinct().toList();
+        return uniqueInstructors.isEmpty()
+            ? "Instructor TBA"
+            : "Instructor: " + String.join(", ", uniqueInstructors);
+    }
+
+    /**
+     * Escapes characters that have special meaning in an HTML label.
+     *
+     * @param value text to escape
+     * @return HTML-safe text
+     */
     private static String escapeHtml(String value) {
         return value.replace("&", "&amp;")
             .replace("<", "&lt;")
             .replace(">", "&gt;");
     }
 
-    static List<Course> filterCourses(
+    /**
+     * Loads and validates the university logo resource.
+     *
+     * @return loaded logo icon
+     * @throws IllegalStateException if the resource is missing or unreadable
+     */
+    private static ImageIcon loadLogoIcon() {
+        URL logoUrl = MainMenu.class.getResource("/images/ecsu-logo.png");
+        if (logoUrl == null) {
+            throw new IllegalStateException(
+                "Missing GUI logo resource: /images/ecsu-logo.png"
+            );
+        }
+        ImageIcon icon = new ImageIcon(logoUrl);
+        if (icon.getIconWidth() <= 0 || icon.getIconHeight() <= 0) {
+            throw new IllegalStateException("Could not load GUI logo image.");
+        }
+        return icon;
+    }
+
+    /**
+     * Creates a proportionally scaled logo with an accessible name.
+     *
+     * @param maxWidth maximum rendered width in pixels
+     * @param maxHeight maximum rendered height in pixels
+     * @return label containing the scaled logo
+     */
+    private JLabel createLogoLabel(int maxWidth, int maxHeight) {
+        double scale = Math.min(
+            (double) maxWidth / logoIcon.getIconWidth(),
+            (double) maxHeight / logoIcon.getIconHeight()
+        );
+        Image scaledLogo = logoIcon.getImage().getScaledInstance(
+            (int) Math.round(logoIcon.getIconWidth() * scale),
+            (int) Math.round(logoIcon.getIconHeight() * scale),
+            Image.SCALE_SMOOTH
+        );
+        JLabel logo = new JLabel(new ImageIcon(scaledLogo));
+        logo.getAccessibleContext().setAccessibleName(
+            "Eastern Connecticut State University logo"
+        );
+        return logo;
+    }
+
+    /**
+     * Filters course sections using the criteria shown in the GUI.
+     *
+     * @param courses sections to filter
+     * @param courseNumber course number to match, or blank for any number
+     * @param openOnly whether to exclude closed sections
+     * @param instructor instructor-name substring to match, or blank for any
+     * @param excludedDay weekday to exclude, or blank for no day restriction
+     * @return the matching course sections in their original order
+     */
+    private static List<Course> filterCourses(
         List<Course> courses,
         String courseNumber,
         boolean openOnly,
@@ -429,6 +735,13 @@ public class MainMenu {
             .collect(Collectors.toList());
     }
 
+    /**
+     * Checks section-level and meeting-level faculty for a matching substring.
+     *
+     * @param course section to inspect
+     * @param instructorFilter lowercase instructor-name substring
+     * @return whether any faculty name contains the filter
+     */
     private static boolean hasInstructor(Course course, String instructorFilter) {
         if (containsInstructor(course.faculty(), instructorFilter)) {
             return true;
@@ -444,6 +757,13 @@ public class MainMenu {
             ));
     }
 
+    /**
+     * Checks a faculty list for a matching display-name substring.
+     *
+     * @param faculty faculty list, possibly {@code null}
+     * @param instructorFilter lowercase instructor-name substring
+     * @return whether any display name contains the filter
+     */
     private static boolean containsInstructor(
         List<Course.Faculty> faculty,
         String instructorFilter
@@ -455,6 +775,13 @@ public class MainMenu {
                 .contains(instructorFilter));
     }
 
+    /**
+     * Checks whether a section has a meeting on the specified day code.
+     *
+     * @param course section to inspect
+     * @param dayCode standard single-letter weekday code
+     * @return whether any meeting occurs on that day
+     */
     private static boolean meetsOnDay(Course course, String dayCode) {
         if (course.meetingsFaculty() == null) {
             return false;
@@ -474,6 +801,12 @@ public class MainMenu {
             });
     }
 
+    /**
+     * Normalizes supported weekday names and abbreviations to standard codes.
+     *
+     * @param day day name or abbreviation
+     * @return standard day code, or {@code null} for blank or unrecognized input
+     */
     private static String dayCode(String day) {
         if (day == null || day.isBlank()) {
             return null;

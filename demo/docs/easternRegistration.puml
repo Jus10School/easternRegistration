@@ -1,57 +1,169 @@
 @startuml
+title Eastern Registration - Class and Relationship Diagram
+hide empty members
 skinparam classAttributeIconSize 0
-hide circle
 
-class EasternSchedule {
-  -{static} BASE: String = "https://reg-prod.ec.easternct.edu/StudentRegistrationSsb"
-  -term: String
-  ~cookieManager: CookieManager
-  ~client: HttpClient
-  --
-  +EasternSchedule()
-  +getTerm(): String
-  -retrieveTerms(): String
-  -parseTerms(content: String): ArrayList<Term>
-  -parseCourses(content: String): ArrayList<Course>
-  +getAvailableTerms(): ArrayList<Term>
-  -postTerm(): String
-  -createCacheFile(subject: String): Path
-  -cacheCourses(subject: String): void
-  +queryCourseBySubject(subject: String): ArrayList<Course>
+package "com.example" {
+  class MainMenu <<Swing GUI>> {
+    - schedule: EasternSchedule
+    - student: Student
+    - termCombo: JComboBox<Term>
+    - searchResults: DefaultListModel<Course>
+    - registeredCourses: DefaultListModel<Course>
+    + MainMenu(schedule: EasternSchedule)
+    + show(): void
+    - loadTerms(): void
+    - createStudent(): void
+    - returnToLogin(): void
+    - searchCourses(): void
+    - addSelectedCourses(): void
+    - dropSelectedCourses(): void
+    - dropAllCourses(): void
+    - filterCourses(courses: List<Course>, courseNumber: String, openOnly: boolean, instructor: String, excludedDay: String): List<Course>
+  }
+
+  class EasternSchedule <<API and cache access>> {
+    -{static} BASE: String
+    -{static} DEFAULT_TERM: String
+    - client: HttpClient
+    + EasternSchedule()
+    + getTerm(): String
+    + getAvailableTerms(): ArrayList<Term>
+    + queryCourseBySubject(termCode: String, subject: String): ArrayList<Course>
+  }
+
+  class Student <<domain model>> {
+    +{static} MAX_CREDITS: int = 17
+    - id: String
+    - firstName: String
+    - lastName: String
+    - courses: List<Course>
+    + Student(id: String, firstName: String, lastName: String)
+    + getId(): String
+    + getFirstName(): String
+    + getLastName(): String
+    + getCourses(): List<Course>
+    + getRegisteredCredits(): BigDecimal
+    + addCoursesWithResult(coursesToAdd: Course...): AddCoursesResult
+    + dropCourses(coursesToDrop: Course...): boolean
+    + dropAllCourses(): void
+  }
+
+  enum "Student.AddCoursesResult" as AddCoursesResult {
+    ADDED
+    NO_COURSES
+    COURSE_LIMIT_EXCEEDED
+    COURSE_CREDITS_UNKNOWN
+    COURSE_NOT_OPEN
+    ALREADY_REGISTERED
+    TIME_CONFLICT
+  }
+
+  class Course <<record>> {
+    - id: String
+    - subject: String
+    - courseNumber: String
+    - sequenceNumber: String
+    - courseTitle: String
+    - creditHours: BigDecimal
+    - creditHourLow: BigDecimal
+    - creditHourHigh: BigDecimal
+    - openSection: Boolean
+    - faculty: List<Course.Faculty>
+    - meetingsFaculty: List<Course.MeetingFaculty>
+    + id(): String
+    + subject(): String
+    + courseNumber(): String
+    + sequenceNumber(): String
+    + courseTitle(): String
+    + creditHours(): BigDecimal
+    + creditHourLow(): BigDecimal
+    + creditHourHigh(): BigDecimal
+    + openSection(): Boolean
+    + faculty(): List<Course.Faculty>
+    + meetingsFaculty(): List<Course.MeetingFaculty>
+    + creditsDescription(): String
+    + toString(): String
+  }
+
+  class "Course.Faculty" as CourseFaculty <<nested record>> {
+    - displayName: String
+    + displayName(): String
+  }
+
+  class "Course.MeetingFaculty" as MeetingFaculty <<nested record>> {
+    - meetingTime: Course.MeetingTime
+    - faculty: List<Course.Faculty>
+    + meetingTime(): Course.MeetingTime
+    + faculty(): List<Course.Faculty>
+    + toString(): String
+  }
+
+  class "Course.MeetingTime" as MeetingTime <<nested record>> {
+    - beginTime: String
+    - endTime: String
+    - monday: boolean
+    - tuesday: boolean
+    - wednesday: boolean
+    - thursday: boolean
+    - friday: boolean
+    - saturday: boolean
+    - sunday: boolean
+    + beginTime(): String
+    + endTime(): String
+    + monday(): boolean
+    + tuesday(): boolean
+    + wednesday(): boolean
+    + thursday(): boolean
+    + friday(): boolean
+    + saturday(): boolean
+    + sunday(): boolean
+    + days(): String
+    + timeRange(): String
+    + toString(): String
+  }
+
+  class Term <<record>> {
+    - code: String
+    - description: String
+    + code(): String
+    + description(): String
+    + toString(): String
+  }
 }
 
-record Course {
-  -id : String
-  -subject: String
-  -courseNumber: String
-  -meetingsFaculty: List<MeetingFaculty>
-}
+MainMenu --> "1" EasternSchedule : queries terms and courses
+MainMenu --> "0..1" Student : active student
+MainMenu --> "0..*" Term : term selector
+MainMenu --> "0..*" Course : search and registered lists
+MainMenu ..> AddCoursesResult : presents registration outcome
 
-record MeetingFaculty {
-  -meetingTime: MeetingTime
-}
+Student --> "0..*" Course : registered sections
+Student ..> AddCoursesResult : returns
+Student ..> MeetingTime : checks schedule conflicts
 
-record MeetingTime {
-  -monday: boolean
-  -tuesday: boolean
-  -wednesday: boolean
-  -thursday: boolean
-  -friday: boolean
-  -saturday: boolean
-  -sunday: boolean
-}
+Course --> "0..*" CourseFaculty : section instructors
+Course --> "0..*" MeetingFaculty : scheduled meetings
+MeetingFaculty --> "0..1" MeetingTime : meeting schedule
+MeetingFaculty --> "0..*" CourseFaculty : meeting instructors
 
-record Term {
-  -code: String
-  -description: String
-}
+EasternSchedule ..> Term : retrieves available terms
+EasternSchedule ..> Course : parses course search results
 
-'Aggregation and composition
-MeetingFaculty "1" o-- "1" MeetingTime : has a >
-Course "1" 0-- "0*" MeetingFaculty: has a >
+note right of Course
+  Record components are private final fields;
+  public component accessors are shown explicitly.
+end note
 
-'Dependencies
-EasternSchedule ..> Term : uses
-EasternSchedule ..> Course : uses
+note right of Student
+  Batch registration is atomic. It checks open status,
+  duplicates, credit limits, and meeting conflicts.
+  Variable-credit courses count the high value.
+end note
+
+note right of EasternSchedule
+  Reads cache files when present and fetches missing data.
+  Course cache files are keyed by term and subject.
+end note
 
 @enduml
