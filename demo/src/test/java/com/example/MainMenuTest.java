@@ -248,6 +248,69 @@ public class MainMenuTest {
         assertTrue(result.contains("CSC 360-02"));
     }
 
+    @Test
+    public void createsStudentAndAddsAndDropsCoursesInteractively() throws Exception {
+        EasternSchedule schedule = scheduleFromJson(FILTER_COURSES_JSON);
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        PrintStream originalOutput = System.out;
+
+        String userInput = String.join("\n",
+            "3",
+            "s123",
+            "Ada",
+            "Lovelace",
+            "1",
+            "CSC",
+            "1,3",
+            "4",
+            "2",
+            "1",
+            "4",
+            "b",
+            "q",
+            ""
+        );
+        try (PrintStream capturedOutput =
+                 new PrintStream(output, true, StandardCharsets.UTF_8)) {
+            System.setOut(capturedOutput);
+            new MainMenu(schedule, new Scanner(userInput)).run();
+        } finally {
+            System.setOut(originalOutput);
+        }
+
+        String result = output.toString(StandardCharsets.UTF_8);
+        assertTrue(result.contains("Created student Ada Lovelace (ID: s123)."));
+        assertTrue(result.contains(
+            "Select an option (or Q to quit): Student ID: "
+        ));
+        assertTrue(result.contains("Course(s) added."));
+        assertTrue(result.contains("Selected course(s) dropped."));
+        assertTrue(result.contains("CSC 360-03"));
+    }
+
+    @Test
+    public void explainsWhyCourseRegistrationWasRejected() throws Exception {
+        EasternSchedule schedule = scheduleFromJson(FILTER_COURSES_JSON);
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        PrintStream originalOutput = System.out;
+        String userInput = String.join("\n",
+            "3", "s123", "Ada", "Lovelace",
+            "1", "CSC", "2",
+            "b", "q", ""
+        );
+        try (PrintStream capturedOutput =
+                 new PrintStream(output, true, StandardCharsets.UTF_8)) {
+            System.setOut(capturedOutput);
+            new MainMenu(schedule, new Scanner(userInput)).run();
+        } finally {
+            System.setOut(originalOutput);
+        }
+
+        assertTrue(output.toString(StandardCharsets.UTF_8).contains(
+            "at least one selected section is not open; it may be full."
+        ));
+    }
+
     private static EasternSchedule scheduleFromJson(String json) throws IOException {
         List<Course> courses = coursesFromJson(json);
         return new EasternSchedule() {
