@@ -68,7 +68,7 @@ public class EasternSchedule {
      * @throws InterruptedException if a web request is interrupted
      */
     private String retrieveTerms() throws IOException, InterruptedException {
-        Path cacheFile = Path.of("cache/terms.txt");
+        Path cacheFile = getCacheFile("terms.txt");
         String content;
 
         if (Files.exists(cacheFile)) {
@@ -93,6 +93,7 @@ public class EasternSchedule {
         }
 
         content = response.body();
+        Files.createDirectories(cacheFile.getParent());
         Files.writeString(cacheFile, content);
 
         return content; 
@@ -182,8 +183,12 @@ public class EasternSchedule {
      * @param subject
      * @return Path
      */
-    private Path createCacheFile(String subject) {
-        return Path.of("cache/term_" + term + "_" + subject + ".txt");
+    private Path getCacheFile(String fileName) {
+        Path cacheDirectory = Path.of("cache");
+        if (!Files.isDirectory(cacheDirectory) && Files.isDirectory(Path.of("..", "cache"))) {
+            cacheDirectory = Path.of("..", "cache");
+        }
+        return cacheDirectory.resolve(fileName);
     }
 
     /**
@@ -194,7 +199,7 @@ public class EasternSchedule {
      */
     private void cacheCourses(String subject) throws Exception {
         
-        Path cacheFile = createCacheFile(subject);
+        Path cacheFile = getCacheFile("term_" + term + "_" + subject + ".txt");
 
         // if file already exists, return
         if (Files.exists(cacheFile)) {            
@@ -228,6 +233,7 @@ public class EasternSchedule {
         }
 
         // save data to cache file
+        Files.createDirectories(cacheFile.getParent());
         Files.writeString(cacheFile, response.body());
     }
 
@@ -242,7 +248,7 @@ public class EasternSchedule {
     public ArrayList<Course> queryCourseBySubject(String subject) throws Exception {
         
         cacheCourses(subject);
-        Path cacheFile = createCacheFile(subject);
+        Path cacheFile = getCacheFile("term_" + term + "_" + subject + ".txt");
         String content = Files.readString(cacheFile);
         
         ArrayList<Course> courses = parseCourses(content);
