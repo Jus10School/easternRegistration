@@ -1,6 +1,6 @@
 package com.example;
 
-import java.util.Scanner;
+import javax.swing.SwingUtilities;
 
 /**
  * Entry point for the Eastern Registration system.
@@ -13,12 +13,13 @@ public class EasternRegistration {
     }
 
     /**
-     * Main entry point of application
+     * Main entry point of application.
      * @param args not used
-     * @throws Exception if a course lookup fails
      */
-    public static void main(String[] args) throws Exception {
+    public static void main(String[] args) {
         EasternSchedule easternSchedule = new EasternSchedule();
-        new MainMenu(easternSchedule, new Scanner(System.in)).run();
+        SwingUtilities.invokeLater(
+            () -> new MainMenu(easternSchedule).show()
+        );
     }
 }
