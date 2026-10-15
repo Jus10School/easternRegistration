@@ -6,20 +6,29 @@ skinparam classAttributeIconSize 0
 package "com.example" {
   class MainMenu <<Swing GUI>> {
     - schedule: EasternSchedule
+    - studentAccounts: Map<String, Student>
+    - studentTerms: Map<String, String>
     - student: Student
     - termCombo: JComboBox<Term>
+    - excludedDayCombo: JComboBox<String>
     - searchResults: DefaultListModel<Course>
     - registeredCourses: DefaultListModel<Course>
+    - registeredCreditsLabel: JLabel
     + MainMenu(schedule: EasternSchedule)
     + show(): void
     - loadTerms(): void
-    - createStudent(): void
+    - createStudentAccount(): void
+    - logInStudent(): void
+    - hasValidStudentDetails(id: String, firstName: String, lastName: String): boolean
+    - showStudentDetailsError(message: String): void
+    - openStudentSession(student: Student): void
+    - selectSavedTermForCurrentStudent(): void
     - returnToLogin(): void
     - searchCourses(): void
     - addSelectedCourses(): void
     - dropSelectedCourses(): void
     - dropAllCourses(): void
-    - filterCourses(courses: List<Course>, courseNumber: String, openOnly: boolean, instructor: String, excludedDay: String): List<Course>
+    -{static} filterCourses(courses: List<Course>, courseNumber: String, openOnly: boolean, instructor: String, excludedDay: String): List<Course>
   }
 
   class EasternSchedule <<API and cache access>> {
@@ -133,6 +142,7 @@ package "com.example" {
 }
 
 MainMenu --> "1" EasternSchedule : queries terms and courses
+MainMenu --> "0..*" Student : studentAccounts
 MainMenu --> "0..1" Student : active student
 MainMenu --> "0..*" Term : term selector
 MainMenu --> "0..*" Course : search and registered lists
@@ -159,6 +169,13 @@ note right of Student
   Batch registration is atomic. It checks open status,
   duplicates, credit limits, and meeting conflicts.
   Variable-credit courses count the high value.
+end note
+
+note right of MainMenu
+  Student accounts and the term associated with a successful
+  course addition are held in memory by student ID. Login
+  matches the trimmed ID and names; this is a classroom account
+  flow, not password-based authentication.
 end note
 
 note right of EasternSchedule
